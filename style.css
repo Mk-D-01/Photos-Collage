@@ -734,3 +734,233 @@ body {
   background: rgba(192,132,252,0.3);
   color: white;
 }
+
+/* ============================
+   DRIVE BUTTON
+   ============================ */
+.btn-drive {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.15);
+  color: var(--text-primary);
+  gap: 8px;
+}
+.btn-drive:hover {
+  background: rgba(66,133,244,0.15);
+  border-color: rgba(66,133,244,0.4);
+}
+
+.drive-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.drive-icon-lg {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+}
+
+/* ============================
+   DRIVE IMPORT MODAL
+   ============================ */
+.drive-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  background: rgba(6, 5, 12, 0.88);
+  backdrop-filter: blur(16px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+.drive-modal.active {
+  opacity: 1;
+  pointer-events: all;
+}
+
+.drive-modal-box {
+  background: var(--bg-card);
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 560px;
+  padding: 32px;
+  box-shadow: var(--shadow-lg), var(--shadow-glow);
+  animation: modalIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes modalIn {
+  from { transform: scale(0.9) translateY(20px); opacity: 0; }
+  to   { transform: scale(1) translateY(0); opacity: 1; }
+}
+
+.drive-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.drive-modal-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  color: var(--text-primary);
+}
+
+.drive-modal-close {
+  background: rgba(255,255,255,0.07);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: var(--transition);
+  display: flex; align-items: center; justify-content: center;
+}
+.drive-modal-close:hover { background: rgba(251,113,133,0.2); color: var(--accent-rose); }
+
+.drive-info-box {
+  background: rgba(66,133,244,0.08);
+  border: 1px solid rgba(66,133,244,0.2);
+  border-radius: var(--radius-md);
+  padding: 16px 20px;
+  margin-bottom: 20px;
+}
+
+.drive-info-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #93c5fd;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 10px;
+}
+
+.drive-info-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.drive-info-list li {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  padding-left: 16px;
+  position: relative;
+  line-height: 1.5;
+}
+.drive-info-list li::before {
+  content: '›';
+  position: absolute;
+  left: 0;
+  color: #60a5fa;
+}
+.drive-info-list code {
+  background: rgba(255,255,255,0.08);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 0.78rem;
+  color: #a5b4fc;
+}
+
+.drive-url-input {
+  width: 100%;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+  padding: 14px 16px;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.25s;
+  line-height: 1.6;
+}
+.drive-url-input:focus { border-color: rgba(66,133,244,0.5); }
+.drive-url-input::placeholder { color: var(--text-muted); }
+
+/* Status area */
+.drive-status {
+  min-height: 0;
+  overflow: hidden;
+  transition: min-height 0.2s;
+}
+.drive-status:not(:empty) { min-height: 20px; margin-top: 14px; }
+
+.drive-status-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.drive-status-item:last-child { border-bottom: none; }
+.drive-status-icon { font-size: 0.9rem; }
+.drive-status-text { color: var(--text-secondary); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.drive-status-item.success .drive-status-text { color: #86efac; }
+.drive-status-item.error .drive-status-text { color: #fca5a5; }
+.drive-status-item.loading .drive-status-text { color: #93c5fd; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinner { display: inline-block; animation: spin 0.8s linear infinite; }
+
+.drive-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.btn-drive-import {
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  color: white;
+  padding: 10px 28px;
+  border-radius: 50px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  font-family: var(--font-body);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: var(--transition);
+  box-shadow: 0 4px 16px rgba(59,130,246,0.35);
+}
+.btn-drive-import:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 24px rgba(59,130,246,0.5);
+}
+.btn-drive-import:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Inline link button (in empty-hint) */
+.link-btn {
+  background: none;
+  border: none;
+  color: #60a5fa;
+  cursor: pointer;
+  font-size: inherit;
+  font-family: inherit;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: color 0.2s;
+}
+.link-btn:hover { color: #93c5fd; }
+

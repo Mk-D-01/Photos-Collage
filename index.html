@@ -26,6 +26,14 @@
       <div class="header-actions">
         <button class="btn btn-ghost" id="btnClearAll" title="Clear all photos">🗑 Clear All</button>
         <button class="btn btn-ghost" id="btnShuffle" title="Re-arrange photos">🔀 Shuffle</button>
+        <button class="btn btn-drive" id="btnDriveImport" title="Import from Google Drive">
+          <svg class="drive-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M4.5 20L9 12L4.5 4H8.5L13 12L8.5 20H4.5Z" fill="#4285F4"/>
+            <path d="M15.5 20L20 12L15.5 4H11.5L16 12L11.5 20H15.5Z" fill="#FBBC05"/>
+            <path d="M4.5 20H15.5L13 16H7L4.5 20Z" fill="#34A853"/>
+          </svg>
+          Drive
+        </button>
         <label class="btn btn-primary" for="fileInput" id="uploadLabel">
           <span>✦ Add Memories</span>
           <input type="file" id="fileInput" accept="image/*" multiple hidden />
@@ -57,9 +65,52 @@
       <label class="btn btn-hero" for="fileInput">
         <span class="btn-icon">✦</span> Upload Your Memories
       </label>
-      <p class="empty-hint">or drag &amp; drop photos anywhere</p>
+      <p class="empty-hint">or drag &amp; drop photos anywhere · or import from <button class="link-btn" id="emptyDriveBtn">Google Drive</button></p>
     </div>
   </section>
+
+  <!-- Google Drive Import Modal -->
+  <div class="drive-modal" id="driveModal">
+    <div class="drive-modal-box">
+      <div class="drive-modal-header">
+        <div class="drive-modal-title">
+          <svg class="drive-icon-lg" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M4.5 20L9 12L4.5 4H8.5L13 12L8.5 20H4.5Z" fill="#4285F4"/>
+            <path d="M15.5 20L20 12L15.5 4H11.5L16 12L11.5 20H15.5Z" fill="#FBBC05"/>
+            <path d="M4.5 20H15.5L13 16H7L4.5 20Z" fill="#34A853"/>
+          </svg>
+          Import from Google Drive
+        </div>
+        <button class="drive-modal-close" id="driveModalClose">✕</button>
+      </div>
+
+      <div class="drive-info-box">
+        <p class="drive-info-title">📌 How it works</p>
+        <ul class="drive-info-list">
+          <li>Paste one or more Google Drive <strong>image sharing links</strong> (one per line)</li>
+          <li>Images must be shared as <strong>"Anyone with the link"</strong></li>
+          <li>Supports: <code>drive.google.com/file/d/…</code> and <code>drive.google.com/open?id=…</code></li>
+        </ul>
+      </div>
+
+      <textarea
+        class="drive-url-input"
+        id="driveUrlInput"
+        placeholder="Paste Google Drive link(s) here, one per line…
+
+https://drive.google.com/file/d/1ABC.../view?usp=sharing
+https://drive.google.com/file/d/1DEF.../view?usp=sharing"
+        rows="6"
+      ></textarea>
+
+      <div class="drive-status" id="driveStatus"></div>
+
+      <div class="drive-modal-actions">
+        <button class="btn btn-ghost" id="driveModalCancel">Cancel</button>
+        <button class="btn btn-drive-import" id="driveImportBtn">Import Photos →</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Photo Stats Bar -->
   <div class="stats-bar" id="statsBar">

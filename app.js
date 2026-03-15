@@ -1,7 +1,8 @@
 /**
  * app.js — Main Application Logic
  * Handles: file upload, drag & drop, lightbox, layout switching,
- *          captions, local storage persistence, toasts.
+ *          captions, local storage persistence, toasts,
+ *          and Google Drive link import.
  */
 
 // ─── State ────────────────────────────────────────────────────────────────────
@@ -29,6 +30,15 @@ const lightboxNext   = document.getElementById('lightboxNext');
 const btnClearAll    = document.getElementById('btnClearAll');
 const btnShuffle     = document.getElementById('btnShuffle');
 const toastContainer = document.getElementById('toastContainer');
+// Drive
+const btnDriveImport = document.getElementById('btnDriveImport');
+const driveModal     = document.getElementById('driveModal');
+const driveModalClose= document.getElementById('driveModalClose');
+const driveModalCancel=document.getElementById('driveModalCancel');
+const driveUrlInput  = document.getElementById('driveUrlInput');
+const driveImportBtn = document.getElementById('driveImportBtn');
+const driveStatus    = document.getElementById('driveStatus');
+const emptyDriveBtn  = document.getElementById('emptyDriveBtn');
 
 // ─── Bootstrap ────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
@@ -186,6 +196,32 @@ function bindEvents() {
     renderUI();
     showToast('🗑 All memories cleared');
   });
+
+  // ── Google Drive modal ──
+  const openDriveModal = () => {
+    driveStatus.innerHTML = '';
+    driveUrlInput.value = '';
+    driveModal.classList.add('active');
+    document.body.style.overflow = 'hidden';
+    setTimeout(() => driveUrlInput.focus(), 100);
+  };
+  const closeDriveModal = () => {
+    driveModal.classList.remove('active');
+    document.body.style.overflow = '';
+  };
+
+  btnDriveImport.addEventListener('click', openDriveModal);
+  emptyDriveBtn.addEventListener('click', openDriveModal);
+  driveModalClose.addEventListener('click', closeDriveModal);
+  driveModalCancel.addEventListener('click', closeDriveModal);
+  driveModal.addEventListener('click', e => { if (e.target === driveModal) closeDriveModal(); });
+
+  driveImportBtn.addEventListener('click', handleDriveImport);
+
+  // Close Drive modal on Escape (when not lightbox)
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && driveModal.classList.contains('active')) closeDriveModal();
+  });
 }
 
 // ─── Card Events (delegated) ──────────────────────────────────────────────────
@@ -340,3 +376,170 @@ function spawnAmbientParticles() {
     document.head.appendChild(style);
   }
 }
+
+// ─── Google Drive Import ───────────────────────────────────────────────────────
+
+/**
+ * Extract Google Drive file ID from a sharing URL.
+ * Supports formats:
+ *   https://drive.google.com/file/d/{ID}/view?...
+ *   https://drive.google.com/open?id={ID}
+ *   https://drive.google.com/uc?id={ID}&export=...
+ *   https://docs.google.com/... (photos sometimes shared via docs)
+ */
+function extractDriveFileId(url) {
+  url = url.trim();
+
+  // Pattern 1: /file/d/{ID}/
+  let m = url.match(/\/file\/d\/([a-zA-Z0-9_-]{20,})/);
+  if (m) return m[1];
+
+  // Pattern 2: ?id={ID} or &id={ID}
+  m = url.match(/[?&]id=([a-zA-Z0-9_-]{20,})/);
+  if (m) return m[1];
+
+  // Pattern 3: raw ID (user just pasted the ID itself)
+  if (/^[a-zA-Z0-9_-]{20,}$/.test(url)) return url;
+
+  return null;
+}
+
+/**
+ * Build candidate image URLs for a Drive file ID.
+ * Priority order: thumbnail (fastest) → lh3 direct → uc download.
+ */
+function driveImageUrls(fileId) {
+  return [
+    // Google's image CDN — works for publicly shared images
+    `https://lh3.googleusercontent.com/d/${fileId}`,
+    // Thumbnail (lower quality but widely available)
+    `https://drive.google.com/thumbnail?id=${fileId}&sz=w1600`,
+    // Direct download (may be blocked by browser CORS, but worth trying)
+    `https://drive.google.com/uc?export=download&id=${fileId}`,
+  ];
+}
+
+/**
+ * Try loading an image from an array of URLs in order.
+ * Resolves with a dataURL on success, rejects if all fail.
+ */
+function tryLoadImageUrls(urlList) {
+  return new Promise((resolve, reject) => {
+    let i = 0;
+
+    function tryNext() {
+      if (i >= urlList.length) { reject(new Error('All URLs failed')); return; }
+      const url = urlList[i++];
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+
+      img.onload = () => {
+        try {
+          // Convert to dataURL via canvas so we can store it
+          const canvas = document.createElement('canvas');
+          canvas.width  = img.naturalWidth;
+          canvas.height = img.naturalHeight;
+          canvas.getContext('2d').drawImage(img, 0, 0);
+          resolve({ dataUrl: canvas.toDataURL('image/jpeg', 0.88), srcUrl: url });
+        } catch(e) {
+          // Canvas tainted by CORS — store the remote URL directly instead
+          resolve({ dataUrl: url, srcUrl: url });
+        }
+      };
+      img.onerror = tryNext;
+      img.src = url;
+    }
+    tryNext();
+  });
+}
+
+/** Add or update a status row in the Drive modal status area */
+function setDriveStatusItem(id, state, text) {
+  let item = driveStatus.querySelector(`[data-sid="${id}"]`);
+  if (!item) {
+    item = document.createElement('div');
+    item.className = 'drive-status-item';
+    item.dataset.sid = id;
+    item.innerHTML = `<span class="drive-status-icon"></span><span class="drive-status-text"></span>`;
+    driveStatus.appendChild(item);
+  }
+  item.classList.remove('loading', 'success', 'error');
+  item.classList.add(state);
+
+  const icons = { loading: '<span class="spinner">⟳</span>', success: '✅', error: '❌' };
+  item.querySelector('.drive-status-icon').innerHTML = icons[state] || '';
+  item.querySelector('.drive-status-text').textContent = text;
+}
+
+/** Main handler for the Drive Import button click */
+async function handleDriveImport() {
+  const raw = driveUrlInput.value.trim();
+  if (!raw) {
+    showToast('⚠ Paste at least one Drive link first');
+    return;
+  }
+
+  // Split by newlines and filter blank lines
+  const lines = raw.split(/\n+/).map(l => l.trim()).filter(Boolean);
+  if (!lines.length) return;
+
+  driveStatus.innerHTML = '';
+  driveImportBtn.disabled = true;
+  driveImportBtn.textContent = 'Importing…';
+
+  let successCount = 0;
+
+  const tasks = lines.map(async (line, idx) => {
+    const sid = `drive_${idx}`;
+    // Validate URL
+    if (!line.includes('drive.google.com') && !line.includes('docs.google.com') && !/^[a-zA-Z0-9_-]{20,}$/.test(line)) {
+      setDriveStatusItem(sid, 'error', `Not a valid Drive link: ${line.slice(0, 60)}`);
+      return;
+    }
+
+    const fileId = extractDriveFileId(line);
+    if (!fileId) {
+      setDriveStatusItem(sid, 'error', `Could not extract file ID from: ${line.slice(0, 60)}`);
+      return;
+    }
+
+    setDriveStatusItem(sid, 'loading', `Loading file ${fileId.slice(0, 16)}…`);
+
+    try {
+      const { dataUrl } = await tryLoadImageUrls(driveImageUrls(fileId));
+      photos.push({
+        id      : `drive_${fileId}_${Date.now()}`,
+        dataUrl,
+        caption : '',
+        addedAt : Date.now(),
+        source  : 'google_drive',
+      });
+      successCount++;
+      setDriveStatusItem(sid, 'success', `Added! (ID: ${fileId.slice(0, 16)})`);
+    } catch(err) {
+      setDriveStatusItem(sid, 'error',
+        `Failed: "${fileId.slice(0, 16)}" — Make sure the file is shared publicly.`);
+    }
+  });
+
+  await Promise.allSettled(tasks);
+
+  driveImportBtn.disabled = false;
+  driveImportBtn.textContent = 'Import Photos →';
+
+  if (successCount > 0) {
+    saveToStorage();
+    renderUI();
+    showToast(`📁 ${successCount} Drive ${successCount === 1 ? 'photo' : 'photos'} imported!`);
+    // Auto-close after short delay if all succeeded
+    if (successCount === lines.length) {
+      setTimeout(() => {
+        driveModal.classList.remove('active');
+        document.body.style.overflow = '';
+      }, 1500);
+    }
+  } else {
+    showToast('⚠ No photos could be imported — check sharing settings');
+  }
+}
+
