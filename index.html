@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Memoire — Your Memory Book</title>
+  <meta name="description" content="A beautiful Pinterest-style photo collage that auto-arranges your memories like a memory book." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600&family=Dancing+Script:wght@600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- Ambient background particles -->
+  <div class="ambient-bg" id="ambientBg"></div>
+
+  <!-- Header -->
+  <header class="header">
+    <div class="header-inner">
+      <div class="logo">
+        <span class="logo-icon">📷</span>
+        <span class="logo-text">Mémoire</span>
+      </div>
+      <p class="logo-subtitle">Your personal memory book</p>
+      <div class="header-actions">
+        <button class="btn btn-ghost" id="btnClearAll" title="Clear all photos">🗑 Clear All</button>
+        <button class="btn btn-ghost" id="btnShuffle" title="Re-arrange photos">🔀 Shuffle</button>
+        <label class="btn btn-primary" for="fileInput" id="uploadLabel">
+          <span>✦ Add Memories</span>
+          <input type="file" id="fileInput" accept="image/*" multiple hidden />
+        </label>
+      </div>
+    </div>
+  </header>
+
+  <!-- Drop Zone Overlay -->
+  <div class="drop-overlay" id="dropOverlay">
+    <div class="drop-box">
+      <div class="drop-icon">🖼️</div>
+      <p class="drop-text">Drop your memories here</p>
+    </div>
+  </div>
+
+  <!-- Empty state -->
+  <section class="empty-state" id="emptyState">
+    <div class="empty-inner">
+      <div class="empty-illustration">
+        <div class="polaroid-stack">
+          <div class="polaroid p1">📸</div>
+          <div class="polaroid p2">🌸</div>
+          <div class="polaroid p3">🌅</div>
+        </div>
+      </div>
+      <h1 class="empty-title">Create Your Memory Book</h1>
+      <p class="empty-sub">Upload your photos and watch them arrange beautifully, just like a Pinterest board filled with your favourite moments.</p>
+      <label class="btn btn-hero" for="fileInput">
+        <span class="btn-icon">✦</span> Upload Your Memories
+      </label>
+      <p class="empty-hint">or drag &amp; drop photos anywhere</p>
+    </div>
+  </section>
+
+  <!-- Photo Stats Bar -->
+  <div class="stats-bar" id="statsBar">
+    <span class="stat-count" id="photoCount">0 memories</span>
+    <div class="stat-divider"></div>
+    <span class="stat-label" id="layoutLabel">Masonry Layout</span>
+    <div class="layout-switcher">
+      <button class="layout-btn active" data-layout="masonry" title="Masonry">▦</button>
+      <button class="layout-btn" data-layout="grid" title="Grid">⊞</button>
+      <button class="layout-btn" data-layout="scattered" title="Scattered">❋</button>
+    </div>
+  </div>
+
+  <!-- Collage Container -->
+  <main class="collage-wrapper" id="collageWrapper">
+    <div class="collage-grid masonry" id="collageGrid"></div>
+  </main>
+
+  <!-- Lightbox -->
+  <div class="lightbox" id="lightbox">
+    <button class="lightbox-close" id="lightboxClose">✕</button>
+    <button class="lightbox-nav prev" id="lightboxPrev">‹</button>
+    <button class="lightbox-nav next" id="lightboxNext">›</button>
+    <div class="lightbox-content">
+      <div class="lightbox-polaroid">
+        <img class="lightbox-img" id="lightboxImg" src="" alt="" />
+        <div class="lightbox-meta">
+          <input class="lightbox-caption" id="lightboxCaption" placeholder="Add a caption…" maxlength="100" />
+          <span class="lightbox-date" id="lightboxDate"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast notifications -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="collage.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
