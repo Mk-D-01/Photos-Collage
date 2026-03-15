@@ -87,21 +87,41 @@
       <div class="drive-info-box">
         <p class="drive-info-title">📌 How it works</p>
         <ul class="drive-info-list">
-          <li>Paste one or more Google Drive <strong>image sharing links</strong> (one per line)</li>
-          <li>Images must be shared as <strong>"Anyone with the link"</strong></li>
-          <li>Supports: <code>drive.google.com/file/d/…</code> and <code>drive.google.com/open?id=…</code></li>
+          <li>Paste one or more Drive links — <strong>files</strong> or <strong>folders</strong> (one per line)</li>
+          <li>The app <strong>auto-detects</strong> whether each link is a file or folder</li>
+          <li>Folders: all images inside are imported automatically (requires API key below)</li>
+          <li>Files &amp; folders must be shared as <strong>"Anyone with the link"</strong></li>
         </ul>
       </div>
 
-      <textarea
-        class="drive-url-input"
-        id="driveUrlInput"
-        placeholder="Paste Google Drive link(s) here, one per line…
+      <!-- API Key section (needed for folder listing) -->
+      <div class="drive-apikey-section" id="driveApiKeySection">
+        <div class="drive-apikey-header" id="driveApiKeyToggle">
+          <span class="drive-apikey-label">🔑 Google Drive API Key <span class="drive-apikey-badge" id="apiKeyBadge">not set</span></span>
+          <span class="drive-apikey-chevron" id="apiKeyChevron">▸</span>
+        </div>
+        <div class="drive-apikey-body" id="driveApiKeyBody">
+          <p class="drive-apikey-hint">Required only for <strong>folder</strong> imports. Get a free key at <a href="https://console.cloud.google.com/" target="_blank" rel="noopener" class="drive-ext-link">Google Cloud Console</a> → APIs &amp; Services → Credentials.</p>
+          <div class="drive-apikey-row">
+            <input type="password" class="drive-apikey-input" id="driveApiKeyInput" placeholder="AIza…" autocomplete="off" />
+            <button class="drive-apikey-save" id="driveApiKeySave">Save</button>
+          </div>
+        </div>
+      </div>
 
-https://drive.google.com/file/d/1ABC.../view?usp=sharing
-https://drive.google.com/file/d/1DEF.../view?usp=sharing"
-        rows="6"
-      ></textarea>
+      <!-- URL textarea with live detect badge -->
+      <div class="drive-input-wrap">
+        <textarea
+          class="drive-url-input"
+          id="driveUrlInput"
+          placeholder="Paste Google Drive link(s) here, one per line…
+
+https://drive.google.com/drive/folders/1XYZ…   ← folder (imports all images)
+https://drive.google.com/file/d/1ABC…/view      ← single file"
+          rows="5"
+        ></textarea>
+        <div class="drive-detect-bar" id="driveDetectBar"></div>
+      </div>
 
       <div class="drive-status" id="driveStatus"></div>
 
@@ -111,6 +131,7 @@ https://drive.google.com/file/d/1DEF.../view?usp=sharing"
       </div>
     </div>
   </div>
+
 
   <!-- Photo Stats Bar -->
   <div class="stats-bar" id="statsBar">

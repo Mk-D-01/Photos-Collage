@@ -2,49 +2,56 @@
  * app.js — Main Application Logic
  * Handles: file upload, drag & drop, lightbox, layout switching,
  *          captions, local storage persistence, toasts,
- *          and Google Drive link import.
+ *          and Google Drive link import (files + folders).
  */
 
 // ─── State ────────────────────────────────────────────────────────────────────
-let photos       = [];           // Array of photo objects
-let currentIndex = 0;            // Lightbox index
-let currentLayout= 'masonry';    // Active layout mode
-let dragCounter  = 0;            // Track nested dragenter/leave events
+let photos       = [];
+let currentIndex = 0;
+let currentLayout= 'masonry';
+let dragCounter  = 0;
 
 // ─── DOM Elements ─────────────────────────────────────────────────────────────
-const fileInput      = document.getElementById('fileInput');
-const collageGrid    = document.getElementById('collageGrid');
-const collageWrapper = document.getElementById('collageWrapper');
-const emptyState     = document.getElementById('emptyState');
-const statsBar       = document.getElementById('statsBar');
-const photoCount     = document.getElementById('photoCount');
-const layoutLabel    = document.getElementById('layoutLabel');
-const dropOverlay    = document.getElementById('dropOverlay');
-const lightbox       = document.getElementById('lightbox');
-const lightboxImg    = document.getElementById('lightboxImg');
-const lightboxCaption= document.getElementById('lightboxCaption');
-const lightboxDate   = document.getElementById('lightboxDate');
-const lightboxClose  = document.getElementById('lightboxClose');
-const lightboxPrev   = document.getElementById('lightboxPrev');
-const lightboxNext   = document.getElementById('lightboxNext');
-const btnClearAll    = document.getElementById('btnClearAll');
-const btnShuffle     = document.getElementById('btnShuffle');
-const toastContainer = document.getElementById('toastContainer');
+const fileInput       = document.getElementById('fileInput');
+const collageGrid     = document.getElementById('collageGrid');
+const collageWrapper  = document.getElementById('collageWrapper');
+const emptyState      = document.getElementById('emptyState');
+const statsBar        = document.getElementById('statsBar');
+const photoCount      = document.getElementById('photoCount');
+const layoutLabel     = document.getElementById('layoutLabel');
+const dropOverlay     = document.getElementById('dropOverlay');
+const lightbox        = document.getElementById('lightbox');
+const lightboxImg     = document.getElementById('lightboxImg');
+const lightboxCaption = document.getElementById('lightboxCaption');
+const lightboxDate    = document.getElementById('lightboxDate');
+const lightboxClose   = document.getElementById('lightboxClose');
+const lightboxPrev    = document.getElementById('lightboxPrev');
+const lightboxNext    = document.getElementById('lightboxNext');
+const btnClearAll     = document.getElementById('btnClearAll');
+const btnShuffle      = document.getElementById('btnShuffle');
+const toastContainer  = document.getElementById('toastContainer');
 // Drive
-const btnDriveImport = document.getElementById('btnDriveImport');
-const driveModal     = document.getElementById('driveModal');
-const driveModalClose= document.getElementById('driveModalClose');
-const driveModalCancel=document.getElementById('driveModalCancel');
-const driveUrlInput  = document.getElementById('driveUrlInput');
-const driveImportBtn = document.getElementById('driveImportBtn');
-const driveStatus    = document.getElementById('driveStatus');
-const emptyDriveBtn  = document.getElementById('emptyDriveBtn');
+const btnDriveImport  = document.getElementById('btnDriveImport');
+const driveModal      = document.getElementById('driveModal');
+const driveModalClose = document.getElementById('driveModalClose');
+const driveModalCancel= document.getElementById('driveModalCancel');
+const driveUrlInput   = document.getElementById('driveUrlInput');
+const driveImportBtn  = document.getElementById('driveImportBtn');
+const driveStatus     = document.getElementById('driveStatus');
+const emptyDriveBtn   = document.getElementById('emptyDriveBtn');
+const driveApiKeySection = document.getElementById('driveApiKeySection');
+const driveApiKeyToggle  = document.getElementById('driveApiKeyToggle');
+const driveApiKeyInput   = document.getElementById('driveApiKeyInput');
+const driveApiKeySave    = document.getElementById('driveApiKeySave');
+const apiKeyBadge        = document.getElementById('apiKeyBadge');
+const driveDetectBar     = document.getElementById('driveDetectBar');
 
 // ─── Bootstrap ────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
   loadFromStorage();
   renderUI();
   bindEvents();
+  initDriveUI();
   spawnAmbientParticles();
 });
 
@@ -54,28 +61,22 @@ function saveToStorage() {
     localStorage.setItem('memoire_photos', JSON.stringify(
       photos.map(p => ({ id: p.id, dataUrl: p.dataUrl, caption: p.caption, addedAt: p.addedAt }))
     ));
-  } catch(e) {
-    // Storage might be full with large images – silently ignore
-  }
+  } catch(e) { /* quota exceeded — ignore */ }
 }
 
 function loadFromStorage() {
   try {
     const raw = localStorage.getItem('memoire_photos');
     if (raw) photos = JSON.parse(raw);
-  } catch(e) {
-    photos = [];
-  }
+  } catch(e) { photos = []; }
 }
 
 // ─── Render ───────────────────────────────────────────────────────────────────
 function renderUI() {
   const hasPhotos = photos.length > 0;
-
   emptyState.classList.toggle('visible', !hasPhotos);
   statsBar.classList.toggle('visible', hasPhotos);
   collageWrapper.style.display = hasPhotos ? '' : 'none';
-
   if (hasPhotos) {
     photoCount.textContent = `${photos.length} ${photos.length === 1 ? 'memory' : 'memories'}`;
     renderCollage(photos, collageGrid, currentLayout);
@@ -92,7 +93,6 @@ function updateLayoutLabel() {
 function processFiles(files) {
   const imageFiles = Array.from(files).filter(f => f.type.startsWith('image/'));
   if (!imageFiles.length) { showToast('⚠ No image files found'); return; }
-
   let loaded = 0;
   imageFiles.forEach(file => {
     const reader = new FileReader();
@@ -116,26 +116,21 @@ function processFiles(files) {
 
 // ─── Bind Global Events ───────────────────────────────────────────────────────
 function bindEvents() {
-  // File input
   fileInput.addEventListener('change', e => {
     processFiles(e.target.files);
-    fileInput.value = ''; // reset so same files can be re-added
+    fileInput.value = '';
   });
 
-  // Drag & drop – window level
   window.addEventListener('dragenter', e => {
     e.preventDefault();
     dragCounter++;
     dropOverlay.classList.add('active');
   });
-
   window.addEventListener('dragleave', () => {
     dragCounter--;
     if (dragCounter <= 0) { dragCounter = 0; dropOverlay.classList.remove('active'); }
   });
-
   window.addEventListener('dragover', e => e.preventDefault());
-
   window.addEventListener('drop', e => {
     e.preventDefault();
     dragCounter = 0;
@@ -143,30 +138,25 @@ function bindEvents() {
     if (e.dataTransfer.files.length) processFiles(e.dataTransfer.files);
   });
 
-  // Lightbox controls
   lightboxClose.addEventListener('click', closeLightbox);
   lightboxPrev.addEventListener('click', () => navigateLightbox(-1));
   lightboxNext.addEventListener('click', () => navigateLightbox(1));
+  lightbox.addEventListener('click', e => { if (e.target === lightbox) closeLightbox(); });
 
-  lightbox.addEventListener('click', e => {
-    if (e.target === lightbox) closeLightbox();
-  });
-
-  // Caption save on blur/enter
   lightboxCaption.addEventListener('blur', saveLightboxCaption);
   lightboxCaption.addEventListener('keydown', e => {
     if (e.key === 'Enter') { e.preventDefault(); lightboxCaption.blur(); }
   });
 
-  // Keyboard nav
   document.addEventListener('keydown', e => {
-    if (!lightbox.classList.contains('active')) return;
-    if (e.key === 'ArrowLeft')  navigateLightbox(-1);
-    if (e.key === 'ArrowRight') navigateLightbox(1);
-    if (e.key === 'Escape')     closeLightbox();
+    if (lightbox.classList.contains('active')) {
+      if (e.key === 'ArrowLeft')  navigateLightbox(-1);
+      if (e.key === 'ArrowRight') navigateLightbox(1);
+      if (e.key === 'Escape')     closeLightbox();
+    }
+    if (e.key === 'Escape' && driveModal.classList.contains('active')) closeDriveModal();
   });
 
-  // Layout switcher
   document.querySelectorAll('.layout-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.layout-btn').forEach(b => b.classList.remove('active'));
@@ -178,7 +168,6 @@ function bindEvents() {
     });
   });
 
-  // Shuffle
   btnShuffle.addEventListener('click', () => {
     if (!photos.length) return;
     shuffleArray(photos);
@@ -187,7 +176,6 @@ function bindEvents() {
     showToast('🔀 Memories shuffled!');
   });
 
-  // Clear all
   btnClearAll.addEventListener('click', () => {
     if (!photos.length) return;
     if (!confirm(`Remove all ${photos.length} memories? This cannot be undone.`)) return;
@@ -197,17 +185,14 @@ function bindEvents() {
     showToast('🗑 All memories cleared');
   });
 
-  // ── Google Drive modal ──
+  // Drive modal open/close
   const openDriveModal = () => {
     driveStatus.innerHTML = '';
+    driveDetectBar.innerHTML = '';
     driveUrlInput.value = '';
     driveModal.classList.add('active');
     document.body.style.overflow = 'hidden';
     setTimeout(() => driveUrlInput.focus(), 100);
-  };
-  const closeDriveModal = () => {
-    driveModal.classList.remove('active');
-    document.body.style.overflow = '';
   };
 
   btnDriveImport.addEventListener('click', openDriveModal);
@@ -215,37 +200,27 @@ function bindEvents() {
   driveModalClose.addEventListener('click', closeDriveModal);
   driveModalCancel.addEventListener('click', closeDriveModal);
   driveModal.addEventListener('click', e => { if (e.target === driveModal) closeDriveModal(); });
-
   driveImportBtn.addEventListener('click', handleDriveImport);
-
-  // Close Drive modal on Escape (when not lightbox)
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && driveModal.classList.contains('active')) closeDriveModal();
-  });
 }
 
-// ─── Card Events (delegated) ──────────────────────────────────────────────────
+function closeDriveModal() {
+  driveModal.classList.remove('active');
+  document.body.style.overflow = '';
+}
+
+// ─── Card Events ──────────────────────────────────────────────────────────────
 function bindCardEvents() {
   collageGrid.addEventListener('click', handleCardClick);
 }
 
 function handleCardClick(e) {
   const deleteBtn = e.target.closest('[data-action="delete"]');
-  const openBtn   = e.target.closest('[data-action="open"]');
   const card      = e.target.closest('.photo-card');
-
   if (!card) return;
   const id    = card.dataset.id;
   const index = photos.findIndex(p => p.id === id);
   if (index === -1) return;
-
-  if (deleteBtn) {
-    e.stopPropagation();
-    deletePhoto(index);
-    return;
-  }
-
-  // Open lightbox (click anywhere on card or "Caption" btn)
+  if (deleteBtn) { e.stopPropagation(); deletePhoto(index); return; }
   openLightbox(index);
 }
 
@@ -288,19 +263,14 @@ function navigateLightbox(dir) {
 function updateLightboxContent() {
   const photo = photos[currentIndex];
   if (!photo) return;
-
   lightboxImg.src       = photo.dataUrl;
   lightboxImg.alt       = photo.caption || `Memory ${currentIndex + 1}`;
   lightboxCaption.value = photo.caption || '';
-  lightboxDate.textContent = photo.addedAt
-    ? `Added ${formatDate(photo.addedAt)}`
-    : '';
-
-  // Animate the polaroid
+  lightboxDate.textContent = photo.addedAt ? `Added ${formatDate(photo.addedAt)}` : '';
   const polaroid = document.querySelector('.lightbox-polaroid');
   if (polaroid) {
     polaroid.style.animation = 'none';
-    void polaroid.offsetHeight; // reflow trick
+    void polaroid.offsetHeight;
     polaroid.style.animation = '';
   }
 }
@@ -311,7 +281,6 @@ function saveLightboxCaption() {
   if (photos[currentIndex].caption !== newCaption) {
     photos[currentIndex].caption = newCaption;
     saveToStorage();
-    // Update visible card caption if present
     const card = collageGrid.querySelector(`[data-id="${photos[currentIndex].id}"]`);
     if (card) {
       const captionEl = card.querySelector('.card-caption');
@@ -328,7 +297,6 @@ function showToast(message, duration = 2800) {
   toast.className = 'toast';
   toast.textContent = message;
   toastContainer.appendChild(toast);
-
   setTimeout(() => {
     toast.classList.add('fade-out');
     setTimeout(() => toast.remove(), 350);
@@ -338,9 +306,7 @@ function showToast(message, duration = 2800) {
 // ─── Ambient particles ────────────────────────────────────────────────────────
 function spawnAmbientParticles() {
   const bg = document.getElementById('ambientBg');
-  const count = 18;
-
-  for (let i = 0; i < count; i++) {
+  for (let i = 0; i < 18; i++) {
     const dot = document.createElement('div');
     const size = Math.random() * 4 + 1;
     const x    = Math.random() * 100;
@@ -348,101 +314,189 @@ function spawnAmbientParticles() {
     const dur  = Math.random() * 14 + 8;
     const del  = Math.random() * -14;
     const opacity = Math.random() * 0.3 + 0.05;
-
     dot.style.cssText = `
-      position:absolute;
-      width:${size}px; height:${size}px;
-      left:${x}%; top:${y}%;
-      border-radius:50%;
-      background: hsl(${Math.random() > 0.5 ? 270 : 330}, 80%, 75%);
+      position:absolute; width:${size}px; height:${size}px;
+      left:${x}%; top:${y}%; border-radius:50%;
+      background:hsl(${Math.random() > 0.5 ? 270 : 330},80%,75%);
       opacity:${opacity};
-      animation: floatDot ${dur}s ${del}s ease-in-out infinite alternate;
+      animation:floatDot ${dur}s ${del}s ease-in-out infinite alternate;
       pointer-events:none;
     `;
     bg.appendChild(dot);
   }
-
-  // Inject the keyframe if not already present
   if (!document.getElementById('ambientKF')) {
     const style = document.createElement('style');
     style.id = 'ambientKF';
     style.textContent = `
       @keyframes floatDot {
-        from { transform: translate(0, 0) scale(1); }
-        to   { transform: translate(${Math.random() > 0.5 ? '' : '-'}${Math.floor(Math.random()*30+10)}px,
-                                   ${Math.random() > 0.5 ? '' : '-'}${Math.floor(Math.random()*30+10)}px) scale(${(Math.random()*0.5+0.8).toFixed(2)}); }
+        from { transform: translate(0,0) scale(1); }
+        to   { transform: translate(20px,-15px) scale(0.9); }
       }
     `;
     document.head.appendChild(style);
   }
 }
 
-// ─── Google Drive Import ───────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// GOOGLE DRIVE IMPORT
+// ═══════════════════════════════════════════════════════════════════════════════
 
-/**
- * Extract Google Drive file ID from a sharing URL.
- * Supports formats:
- *   https://drive.google.com/file/d/{ID}/view?...
- *   https://drive.google.com/open?id={ID}
- *   https://drive.google.com/uc?id={ID}&export=...
- *   https://docs.google.com/... (photos sometimes shared via docs)
- */
-function extractDriveFileId(url) {
-  url = url.trim();
+function initDriveUI() {
+  // Load saved API key
+  const saved = localStorage.getItem('memoire_drive_api_key') || '';
+  if (saved) {
+    driveApiKeyInput.value = saved;
+    updateApiKeyBadge(true);
+  }
 
-  // Pattern 1: /file/d/{ID}/
-  let m = url.match(/\/file\/d\/([a-zA-Z0-9_-]{20,})/);
-  if (m) return m[1];
+  // Collapsible API key section
+  driveApiKeyToggle.addEventListener('click', () => {
+    driveApiKeySection.classList.toggle('open');
+  });
 
-  // Pattern 2: ?id={ID} or &id={ID}
-  m = url.match(/[?&]id=([a-zA-Z0-9_-]{20,})/);
-  if (m) return m[1];
+  // Save button
+  driveApiKeySave.addEventListener('click', () => {
+    const key = driveApiKeyInput.value.trim();
+    if (!key) { showToast('⚠ Enter a valid API key first'); return; }
+    localStorage.setItem('memoire_drive_api_key', key);
+    updateApiKeyBadge(true);
+    driveApiKeySection.classList.remove('open');
+    showToast('🔑 API key saved!');
+  });
+  driveApiKeyInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') driveApiKeySave.click();
+  });
 
-  // Pattern 3: raw ID (user just pasted the ID itself)
-  if (/^[a-zA-Z0-9_-]{20,}$/.test(url)) return url;
+  // Live detect bar — debounced as user types
+  let detectTimer;
+  driveUrlInput.addEventListener('input', () => {
+    clearTimeout(detectTimer);
+    detectTimer = setTimeout(updateDetectBar, 350);
+  });
+}
 
-  return null;
+function updateApiKeyBadge(isSet) {
+  apiKeyBadge.textContent = isSet ? '✓ saved' : 'not set';
+  apiKeyBadge.classList.toggle('set', isSet);
+}
+
+/** Render a chip per line showing detected link type */
+function updateDetectBar() {
+  const lines = driveUrlInput.value.split('\n').map(l => l.trim()).filter(Boolean);
+  driveDetectBar.innerHTML = '';
+  lines.forEach(line => {
+    const type  = detectLinkType(line);
+    const label = type === 'folder' ? '📁 Folder' : type === 'file' ? '🖼 File' : '❓ Unknown';
+    const chip  = document.createElement('span');
+    chip.className = `detect-chip ${type}`;
+    chip.title = line;
+    chip.textContent = `${label}: ${truncate(line, 32)}`;
+    driveDetectBar.appendChild(chip);
+  });
+}
+
+function truncate(str, n) {
+  return str.length > n ? str.slice(0, n) + '…' : str;
 }
 
 /**
- * Build candidate image URLs for a Drive file ID.
- * Priority order: thumbnail (fastest) → lh3 direct → uc download.
+ * Detect whether a Drive URL is a file, folder, or unknown.
  */
+function detectLinkType(url) {
+  if (!url) return 'unknown';
+  if (/drive\.google\.com\/(drive\/(u\/\d+\/)?)?folders\//i.test(url)) return 'folder';
+  if (/folderview/i.test(url) && /[?&]id=/i.test(url))                  return 'folder';
+  if (/drive\.google\.com\/file\/d\//i.test(url))                        return 'file';
+  if (/drive\.google\.com\/(open|uc)\?/i.test(url))                      return 'file';
+  if (/lh3\.googleusercontent\.com/i.test(url))                          return 'file';
+  if (/^[a-zA-Z0-9_-]{20,}$/.test(url.trim()))                           return 'file';
+  return 'unknown';
+}
+
+/** Extract folder ID from a Drive folder URL */
+function extractDriveFolderId(url) {
+  url = url.trim();
+  let m = url.match(/\/folders\/([a-zA-Z0-9_-]{20,})/);
+  if (m) return m[1];
+  if (/folderview/i.test(url)) {
+    m = url.match(/[?&]id=([a-zA-Z0-9_-]{20,})/);
+    if (m) return m[1];
+  }
+  return null;
+}
+
+/** Extract file ID from a Drive file URL */
+function extractDriveFileId(url) {
+  url = url.trim();
+  let m = url.match(/\/file\/d\/([a-zA-Z0-9_-]{20,})/);
+  if (m) return m[1];
+  m = url.match(/[?&]id=([a-zA-Z0-9_-]{20,})/);
+  if (m) return m[1];
+  if (/^[a-zA-Z0-9_-]{20,}$/.test(url)) return url;
+  return null;
+}
+
+/** Build candidate image src URLs for a Drive file ID (tried in order) */
 function driveImageUrls(fileId) {
   return [
-    // Google's image CDN — works for publicly shared images
     `https://lh3.googleusercontent.com/d/${fileId}`,
-    // Thumbnail (lower quality but widely available)
     `https://drive.google.com/thumbnail?id=${fileId}&sz=w1600`,
-    // Direct download (may be blocked by browser CORS, but worth trying)
     `https://drive.google.com/uc?export=download&id=${fileId}`,
   ];
 }
 
 /**
- * Try loading an image from an array of URLs in order.
- * Resolves with a dataURL on success, rejects if all fail.
+ * Use Drive API v3 to list all image files in a folder (paginated).
+ */
+async function listFolderImages(folderId, apiKey) {
+  const MIME_TYPES = [
+    'image/jpeg','image/png','image/gif',
+    'image/webp','image/heic','image/bmp','image/tiff',
+  ];
+  const mimeQ  = MIME_TYPES.map(m => `mimeType='${m}'`).join(' or ');
+  const q      = encodeURIComponent(`'${folderId}' in parents and (${mimeQ}) and trashed=false`);
+  const fields = encodeURIComponent('nextPageToken,files(id,name,mimeType)');
+
+  let allFiles  = [];
+  let pageToken = '';
+
+  do {
+    const tokenParam = pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '';
+    const url = `https://www.googleapis.com/drive/v3/files?q=${q}&fields=${fields}&pageSize=100&key=${apiKey}${tokenParam}`;
+    const res  = await fetch(url);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err?.error?.message || `API error ${res.status}`);
+    }
+    const data = await res.json();
+    allFiles   = allFiles.concat(data.files || []);
+    pageToken  = data.nextPageToken || '';
+  } while (pageToken);
+
+  return allFiles;
+}
+
+/**
+ * Try loading an image from a list of fallback URLs.
+ * Resolves to { dataUrl, srcUrl }.
  */
 function tryLoadImageUrls(urlList) {
   return new Promise((resolve, reject) => {
     let i = 0;
-
     function tryNext() {
       if (i >= urlList.length) { reject(new Error('All URLs failed')); return; }
       const url = urlList[i++];
       const img = new Image();
       img.crossOrigin = 'anonymous';
-
       img.onload = () => {
         try {
-          // Convert to dataURL via canvas so we can store it
-          const canvas = document.createElement('canvas');
+          const canvas  = document.createElement('canvas');
           canvas.width  = img.naturalWidth;
           canvas.height = img.naturalHeight;
           canvas.getContext('2d').drawImage(img, 0, 0);
           resolve({ dataUrl: canvas.toDataURL('image/jpeg', 0.88), srcUrl: url });
         } catch(e) {
-          // Canvas tainted by CORS — store the remote URL directly instead
+          // CORS taint — keep the remote URL directly
           resolve({ dataUrl: url, srcUrl: url });
         }
       };
@@ -453,7 +507,7 @@ function tryLoadImageUrls(urlList) {
   });
 }
 
-/** Add or update a status row in the Drive modal status area */
+/** Add or update a status row in the Drive modal */
 function setDriveStatusItem(id, state, text) {
   let item = driveStatus.querySelector(`[data-sid="${id}"]`);
   if (!item) {
@@ -465,81 +519,125 @@ function setDriveStatusItem(id, state, text) {
   }
   item.classList.remove('loading', 'success', 'error');
   item.classList.add(state);
-
   const icons = { loading: '<span class="spinner">⟳</span>', success: '✅', error: '❌' };
   item.querySelector('.drive-status-icon').innerHTML = icons[state] || '';
   item.querySelector('.drive-status-text').textContent = text;
 }
 
-/** Main handler for the Drive Import button click */
+/** Import one file by ID → push to photos[] */
+async function importSingleFile(fileId, sid, fileName) {
+  const label = fileName || fileId.slice(0, 16);
+  setDriveStatusItem(sid, 'loading', `Loading "${label}"…`);
+  const { dataUrl } = await tryLoadImageUrls(driveImageUrls(fileId));
+  photos.push({
+    id      : `drive_${fileId}_${Date.now()}`,
+    dataUrl,
+    caption : fileName ? fileName.replace(/\.[^.]+$/, '') : '',
+    addedAt : Date.now(),
+    source  : 'google_drive',
+  });
+  setDriveStatusItem(sid, 'success', `✓ "${label}" added`);
+}
+
+/** Main import handler — dispatches file vs folder paths per line */
 async function handleDriveImport() {
   const raw = driveUrlInput.value.trim();
-  if (!raw) {
-    showToast('⚠ Paste at least one Drive link first');
-    return;
-  }
+  if (!raw) { showToast('⚠ Paste at least one Drive link first'); return; }
 
-  // Split by newlines and filter blank lines
-  const lines = raw.split(/\n+/).map(l => l.trim()).filter(Boolean);
+  const lines  = raw.split(/\n+/).map(l => l.trim()).filter(Boolean);
   if (!lines.length) return;
 
-  driveStatus.innerHTML = '';
+  const apiKey = (localStorage.getItem('memoire_drive_api_key') || '').trim();
+
+  driveStatus.innerHTML   = '';
   driveImportBtn.disabled = true;
   driveImportBtn.textContent = 'Importing…';
 
   let successCount = 0;
 
   const tasks = lines.map(async (line, idx) => {
-    const sid = `drive_${idx}`;
-    // Validate URL
-    if (!line.includes('drive.google.com') && !line.includes('docs.google.com') && !/^[a-zA-Z0-9_-]{20,}$/.test(line)) {
-      setDriveStatusItem(sid, 'error', `Not a valid Drive link: ${line.slice(0, 60)}`);
+    const sid  = `ln_${idx}`;
+    const type = detectLinkType(line);
+
+    // ── UNKNOWN ───────────────────────────────────────────────────
+    if (type === 'unknown') {
+      setDriveStatusItem(sid, 'error', `Not a recognised Drive link: ${truncate(line, 55)}`);
       return;
     }
 
+    // ── FOLDER ────────────────────────────────────────────────────
+    if (type === 'folder') {
+      const folderId = extractDriveFolderId(line);
+      if (!folderId) {
+        setDriveStatusItem(sid, 'error', `Cannot extract folder ID from: ${truncate(line, 50)}`);
+        return;
+      }
+      if (!apiKey) {
+        setDriveStatusItem(sid, 'error', 'Folder detected — save your API key above first');
+        driveApiKeySection.classList.add('open');
+        return;
+      }
+
+      setDriveStatusItem(sid, 'loading', `Scanning folder "${folderId.slice(0, 14)}"…`);
+      let files;
+      try {
+        files = await listFolderImages(folderId, apiKey);
+      } catch(err) {
+        setDriveStatusItem(sid, 'error', `Folder listing failed: ${err.message}`);
+        return;
+      }
+
+      if (!files.length) {
+        setDriveStatusItem(sid, 'error', `No images found in folder (${folderId.slice(0, 14)})`);
+        return;
+      }
+
+      setDriveStatusItem(sid, 'loading', `Found ${files.length} image(s) — importing…`);
+
+      let folderOk = 0;
+      for (let fi = 0; fi < files.length; fi++) {
+        const f    = files[fi];
+        const fsid = `folder_${idx}_${fi}`;
+        try {
+          await importSingleFile(f.id, fsid, f.name);
+          folderOk++;
+          successCount++;
+          setDriveStatusItem(sid, 'loading', `Folder: ${folderOk}/${files.length} imported…`);
+        } catch(err) {
+          setDriveStatusItem(fsid, 'error', `"${f.name}" failed — check sharing`);
+        }
+      }
+      setDriveStatusItem(sid, 'success', `📁 Folder done: ${folderOk}/${files.length} images added`);
+      return;
+    }
+
+    // ── FILE ──────────────────────────────────────────────────────
     const fileId = extractDriveFileId(line);
     if (!fileId) {
-      setDriveStatusItem(sid, 'error', `Could not extract file ID from: ${line.slice(0, 60)}`);
+      setDriveStatusItem(sid, 'error', `Cannot extract file ID from: ${truncate(line, 50)}`);
       return;
     }
-
-    setDriveStatusItem(sid, 'loading', `Loading file ${fileId.slice(0, 16)}…`);
-
     try {
-      const { dataUrl } = await tryLoadImageUrls(driveImageUrls(fileId));
-      photos.push({
-        id      : `drive_${fileId}_${Date.now()}`,
-        dataUrl,
-        caption : '',
-        addedAt : Date.now(),
-        source  : 'google_drive',
-      });
+      await importSingleFile(fileId, sid);
       successCount++;
-      setDriveStatusItem(sid, 'success', `Added! (ID: ${fileId.slice(0, 16)})`);
     } catch(err) {
-      setDriveStatusItem(sid, 'error',
-        `Failed: "${fileId.slice(0, 16)}" — Make sure the file is shared publicly.`);
+      setDriveStatusItem(sid, 'error', `"${fileId.slice(0, 14)}" failed — check sharing settings`);
     }
   });
 
   await Promise.allSettled(tasks);
 
-  driveImportBtn.disabled = false;
+  driveImportBtn.disabled    = false;
   driveImportBtn.textContent = 'Import Photos →';
 
   if (successCount > 0) {
     saveToStorage();
     renderUI();
     showToast(`📁 ${successCount} Drive ${successCount === 1 ? 'photo' : 'photos'} imported!`);
-    // Auto-close after short delay if all succeeded
-    if (successCount === lines.length) {
-      setTimeout(() => {
-        driveModal.classList.remove('active');
-        document.body.style.overflow = '';
-      }, 1500);
+    if (successCount === lines.length || lines.length === 1) {
+      setTimeout(() => closeDriveModal(), 1800);
     }
   } else {
-    showToast('⚠ No photos could be imported — check sharing settings');
+    showToast('⚠ No photos imported — check sharing settings & API key');
   }
 }
-

@@ -964,3 +964,163 @@ body {
 }
 .link-btn:hover { color: #93c5fd; }
 
+/* ============================
+   DRIVE API KEY SECTION
+   ============================ */
+.drive-apikey-section {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  margin-bottom: 16px;
+  overflow: hidden;
+  transition: border-color 0.2s;
+}
+.drive-apikey-section:focus-within {
+  border-color: rgba(66,133,244,0.4);
+}
+
+.drive-apikey-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 16px;
+  cursor: pointer;
+  user-select: none;
+  background: rgba(255,255,255,0.03);
+  transition: background 0.2s;
+}
+.drive-apikey-header:hover { background: rgba(255,255,255,0.06); }
+
+.drive-apikey-label {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.drive-apikey-badge {
+  font-size: 0.68rem;
+  padding: 2px 8px;
+  border-radius: 20px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-weight: 500;
+}
+.drive-apikey-badge.set {
+  background: rgba(52,168,83,0.12);
+  border-color: rgba(52,168,83,0.35);
+  color: #86efac;
+}
+
+.drive-apikey-chevron {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  transition: transform 0.25s;
+}
+.drive-apikey-section.open .drive-apikey-chevron { transform: rotate(90deg); }
+
+.drive-apikey-body {
+  display: none;
+  padding: 0 16px 16px;
+  background: rgba(255,255,255,0.02);
+}
+.drive-apikey-section.open .drive-apikey-body { display: block; }
+
+.drive-apikey-hint {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.55;
+  margin-bottom: 12px;
+  margin-top: 8px;
+}
+
+.drive-apikey-row {
+  display: flex;
+  gap: 8px;
+}
+
+.drive-apikey-input {
+  flex: 1;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: monospace;
+  font-size: 0.82rem;
+  padding: 8px 12px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.drive-apikey-input:focus { border-color: rgba(66,133,244,0.5); }
+.drive-apikey-input::placeholder { color: var(--text-muted); font-family: var(--font-body); }
+
+.drive-apikey-save {
+  background: rgba(52,168,83,0.2);
+  border: 1px solid rgba(52,168,83,0.35);
+  color: #86efac;
+  border-radius: var(--radius-sm);
+  padding: 8px 18px;
+  font-size: 0.82rem;
+  font-family: var(--font-body);
+  cursor: pointer;
+  font-weight: 600;
+  transition: var(--transition);
+  white-space: nowrap;
+}
+.drive-apikey-save:hover { background: rgba(52,168,83,0.32); }
+
+.drive-ext-link {
+  color: #60a5fa;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.drive-ext-link:hover { color: #93c5fd; }
+
+/* ============================
+   DRIVE INPUT WRAPPER & DETECT BAR
+   ============================ */
+.drive-input-wrap { position: relative; }
+
+.drive-detect-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0;
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.25s, padding 0.25s;
+}
+.drive-detect-bar:not(:empty) {
+  padding: 8px 0 2px;
+  max-height: 120px;
+}
+
+.detect-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.73rem;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-weight: 500;
+  white-space: nowrap;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.detect-chip.file {
+  background: rgba(168,85,247,0.12);
+  border: 1px solid rgba(168,85,247,0.3);
+  color: #d8b4fe;
+}
+.detect-chip.folder {
+  background: rgba(66,133,244,0.12);
+  border: 1px solid rgba(66,133,244,0.3);
+  color: #93c5fd;
+}
+.detect-chip.unknown {
+  background: rgba(251,113,133,0.1);
+  border: 1px solid rgba(251,113,133,0.25);
+  color: #fca5a5;
+}
