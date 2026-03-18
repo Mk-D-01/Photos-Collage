@@ -1,15 +1,28 @@
 /**
- * app.js — Main Application Logic
+ * app.js — Main Application Logic (Optimised v2)
  * Handles: file upload, drag & drop, lightbox, layout switching,
- *          captions, local storage persistence, toasts,
- *          and Google Drive link import (files + folders).
+ *          captions, IndexedDB + localStorage persistence,
+ *          sessionStorage progress restore, toasts,
+ *          touch swipe in lightbox, and Google Drive import.
  */
 
+// ─── Constants ────────────────────────────────────────────────────────────────
+const LS_SESSION_KEY  = 'memoire_session';   // sessionStorage
+const LS_META_KEY     = 'memoire_meta';      // localStorage  (metadata only)
+const LS_API_KEY      = 'memoire_drive_api_key';
+const IDB_NAME        = 'memoireDB';
+const IDB_VERSION     = 1;
+const IDB_STORE       = 'photos';
+const MAX_DIMENSION   = 1600;                // px — compress larger images
+const IMG_QUALITY     = 0.88;
+
 // ─── State ────────────────────────────────────────────────────────────────────
-let photos       = [];
-let currentIndex = 0;
-let currentLayout= 'masonry';
-let dragCounter  = 0;
+let photos        = [];   // { id, dataUrl, caption, addedAt, source? }
+let currentIndex  = 0;
+let currentLayout = 'masonry';
+let dragCounter   = 0;
+let idbDb         = null;   // IndexedDB connection
+let saveTimer     = null;   // debounce handle
 
 // ─── DOM Elements ─────────────────────────────────────────────────────────────
 const fileInput       = document.getElementById('fileInput');
@@ -31,14 +44,14 @@ const btnClearAll     = document.getElementById('btnClearAll');
 const btnShuffle      = document.getElementById('btnShuffle');
 const toastContainer  = document.getElementById('toastContainer');
 // Drive
-const btnDriveImport  = document.getElementById('btnDriveImport');
-const driveModal      = document.getElementById('driveModal');
-const driveModalClose = document.getElementById('driveModalClose');
-const driveModalCancel= document.getElementById('driveModalCancel');
-const driveUrlInput   = document.getElementById('driveUrlInput');
-const driveImportBtn  = document.getElementById('driveImportBtn');
-const driveStatus     = document.getElementById('driveStatus');
-const emptyDriveBtn   = document.getElementById('emptyDriveBtn');
+const btnDriveImport     = document.getElementById('btnDriveImport');
+const driveModal         = document.getElementById('driveModal');
+const driveModalClose    = document.getElementById('driveModalClose');
+const driveModalCancel   = document.getElementById('driveModalCancel');
+const driveUrlInput      = document.getElementById('driveUrlInput');
+const driveImportBtn     = document.getElementById('driveImportBtn');
+const driveStatus        = document.getElementById('driveStatus');
+const emptyDriveBtn      = document.getElementById('emptyDriveBtn');
 const driveApiKeySection = document.getElementById('driveApiKeySection');
 const driveApiKeyToggle  = document.getElementById('driveApiKeyToggle');
 const driveApiKeyInput   = document.getElementById('driveApiKeyInput');
@@ -47,28 +60,234 @@ const apiKeyBadge        = document.getElementById('apiKeyBadge');
 const driveDetectBar     = document.getElementById('driveDetectBar');
 
 // ─── Bootstrap ────────────────────────────────────────────────────────────────
-window.addEventListener('DOMContentLoaded', () => {
-  loadFromStorage();
+window.addEventListener('DOMContentLoaded', async () => {
+  // 1 — Restore layout from session (instant, synchronous)
+  restoreSession();
+
+  // 2 — Open IndexedDB, then load photos
+  try {
+    idbDb = await openIDB();
+    await loadFromIDB();
+  } catch (e) {
+    // Fallback to localStorage if IDB unavailable
+    loadFromLocalStorage();
+  }
+
   renderUI();
   bindEvents();
   initDriveUI();
-  spawnAmbientParticles();
+
+  // 3 — Defer ambient particles until browser is idle
+  if ('requestIdleCallback' in window) {
+    requestIdleCallback(spawnAmbientParticles, { timeout: 2000 });
+  } else {
+    setTimeout(spawnAmbientParticles, 500);
+  }
+
+  // 4 — Save session on tab hide / unload
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') saveSession();
+  });
+  window.addEventListener('pagehide', saveSession);
 });
 
-// ─── Storage ──────────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+// SESSION STORAGE  (tab-level fast restore)
+// ══════════════════════════════════════════════════════════════════════════════
+
+function saveSession() {
+  try {
+    sessionStorage.setItem(LS_SESSION_KEY, JSON.stringify({
+      layout     : currentLayout,
+      scrollY    : window.scrollY,
+      photoIds   : photos.map(p => p.id),
+      lastUpdated: Date.now(),
+    }));
+  } catch (e) { /* ignore */ }
+}
+
+function restoreSession() {
+  try {
+    const raw = sessionStorage.getItem(LS_SESSION_KEY);
+    if (!raw) return;
+    const sess = JSON.parse(raw);
+    if (sess.layout && ['masonry', 'grid', 'scattered'].includes(sess.layout)) {
+      currentLayout = sess.layout;
+      // Update active layout button immediately
+      document.querySelectorAll('.layout-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.layout === currentLayout);
+      });
+      updateLayoutLabel();
+    }
+    // Restore scroll after first paint
+    if (sess.scrollY > 0) {
+      requestAnimationFrame(() => window.scrollTo(0, sess.scrollY));
+    }
+  } catch (e) { /* ignore */ }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// INDEXEDDB
+// ══════════════════════════════════════════════════════════════════════════════
+
+function openIDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_NAME, IDB_VERSION);
+    req.onupgradeneeded = e => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains(IDB_STORE)) {
+        db.createObjectStore(IDB_STORE, { keyPath: 'id' });
+      }
+    };
+    req.onsuccess = e => resolve(e.target.result);
+    req.onerror   = e => reject(e.target.error);
+  });
+}
+
+function idbPut(record) {
+  return new Promise((resolve, reject) => {
+    const tx  = idbDb.transaction(IDB_STORE, 'readwrite');
+    const req = tx.objectStore(IDB_STORE).put(record);
+    req.onsuccess = () => resolve();
+    req.onerror   = e => reject(e.target.error);
+  });
+}
+
+function idbDelete(id) {
+  return new Promise((resolve, reject) => {
+    const tx  = idbDb.transaction(IDB_STORE, 'readwrite');
+    const req = tx.objectStore(IDB_STORE).delete(id);
+    req.onsuccess = () => resolve();
+    req.onerror   = e => reject(e.target.error);
+  });
+}
+
+function idbGetAll() {
+  return new Promise((resolve, reject) => {
+    const tx  = idbDb.transaction(IDB_STORE, 'readonly');
+    const req = tx.objectStore(IDB_STORE).getAll();
+    req.onsuccess = e => resolve(e.target.result || []);
+    req.onerror   = e => reject(e.target.error);
+  });
+}
+
+function idbClear() {
+  return new Promise((resolve, reject) => {
+    const tx  = idbDb.transaction(IDB_STORE, 'readwrite');
+    const req = tx.objectStore(IDB_STORE).clear();
+    req.onsuccess = () => resolve();
+    req.onerror   = e => reject(e.target.error);
+  });
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// STORAGE — SAVE / LOAD
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Debounced save — batches rapid consecutive calls into one write.
+ */
 function saveToStorage() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(_doSave, 250);
+}
+
+async function _doSave() {
+  // Save metadata to localStorage (fast, synchronous access on next load)
+  try {
+    const meta = photos.map(p => ({
+      id: p.id, caption: p.caption, addedAt: p.addedAt, source: p.source,
+    }));
+    localStorage.setItem(LS_META_KEY, JSON.stringify(meta));
+  } catch (e) { /* ignore */ }
+
+  // Save full records (including dataUrl) to IndexedDB
+  if (idbDb) {
+    // Use a single transaction for batch efficiency
+    try {
+      const tx    = idbDb.transaction(IDB_STORE, 'readwrite');
+      const store = tx.objectStore(IDB_STORE);
+      for (const p of photos) {
+        store.put({ id: p.id, dataUrl: p.dataUrl, caption: p.caption, addedAt: p.addedAt, source: p.source });
+      }
+      await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = rej; });
+    } catch (e) { /* ignore */ }
+  } else {
+    // Fallback: localStorage direct (may hit quota for large images)
+    saveToLocalStorage();
+  }
+
+  // Update session snapshot too
+  saveSession();
+}
+
+async function loadFromIDB() {
+  const records = await idbGetAll();
+  if (records.length > 0) {
+    photos = records;
+    const sess = (() => {
+      try { return JSON.parse(sessionStorage.getItem(LS_SESSION_KEY)); } catch { return null; }
+    })();
+    if (sess && sess.photoIds && sess.photoIds.length > 0 && records.length > 0) {
+      showToast(`✦ Session restored — ${records.length} ${records.length === 1 ? 'memory' : 'memories'}`, 2000);
+    }
+  } else {
+    // Try migrating from old localStorage format
+    loadFromLocalStorage();
+    if (photos.length > 0 && idbDb) {
+      // Migrate silently
+      _doSave();
+    }
+  }
+}
+
+// Fallback / migration: old localStorage schema
+function loadFromLocalStorage() {
+  try {
+    const raw = localStorage.getItem('memoire_photos') || localStorage.getItem(LS_META_KEY);
+    if (raw) photos = JSON.parse(raw);
+  } catch (e) { photos = []; }
+}
+
+function saveToLocalStorage() {
   try {
     localStorage.setItem('memoire_photos', JSON.stringify(
       photos.map(p => ({ id: p.id, dataUrl: p.dataUrl, caption: p.caption, addedAt: p.addedAt }))
     ));
-  } catch(e) { /* quota exceeded — ignore */ }
+  } catch (e) { /* quota exceeded — ignore */ }
 }
 
-function loadFromStorage() {
-  try {
-    const raw = localStorage.getItem('memoire_photos');
-    if (raw) photos = JSON.parse(raw);
-  } catch(e) { photos = []; }
+// ══════════════════════════════════════════════════════════════════════════════
+// IMAGE COMPRESSION
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Compress an image File to a dataURL.
+ * Resizes so the longest side ≤ MAX_DIMENSION.
+ */
+function compressImage(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = e => {
+      const img = new Image();
+      img.onerror = reject;
+      img.onload = () => {
+        let { naturalWidth: w, naturalHeight: h } = img;
+        if (w > MAX_DIMENSION || h > MAX_DIMENSION) {
+          if (w >= h) { h = Math.round(h * MAX_DIMENSION / w); w = MAX_DIMENSION; }
+          else        { w = Math.round(w * MAX_DIMENSION / h); h = MAX_DIMENSION; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width  = w;
+        canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', IMG_QUALITY));
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
 // ─── Render ───────────────────────────────────────────────────────────────────
@@ -90,28 +309,32 @@ function updateLayoutLabel() {
 }
 
 // ─── File Handling ────────────────────────────────────────────────────────────
-function processFiles(files) {
+async function processFiles(files) {
   const imageFiles = Array.from(files).filter(f => f.type.startsWith('image/'));
   if (!imageFiles.length) { showToast('⚠ No image files found'); return; }
+
+  showToast(`⏳ Processing ${imageFiles.length} image${imageFiles.length > 1 ? 's' : ''}…`, 1500);
+
+  const results = await Promise.allSettled(imageFiles.map(compressImage));
   let loaded = 0;
-  imageFiles.forEach(file => {
-    const reader = new FileReader();
-    reader.onload = e => {
+
+  results.forEach((result, i) => {
+    if (result.status === 'fulfilled') {
       photos.push({
-        id      : `photo_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-        dataUrl : e.target.result,
-        caption : '',
-        addedAt : Date.now(),
+        id     : `photo_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+        dataUrl: result.value,
+        caption: '',
+        addedAt: Date.now(),
       });
       loaded++;
-      if (loaded === imageFiles.length) {
-        saveToStorage();
-        renderUI();
-        showToast(`✦ ${loaded} ${loaded === 1 ? 'memory' : 'memories'} added!`);
-      }
-    };
-    reader.readAsDataURL(file);
+    }
   });
+
+  if (loaded > 0) {
+    saveToStorage();
+    renderUI();
+    showToast(`✦ ${loaded} ${loaded === 1 ? 'memory' : 'memories'} added!`);
+  }
 }
 
 // ─── Bind Global Events ───────────────────────────────────────────────────────
@@ -121,6 +344,7 @@ function bindEvents() {
     fileInput.value = '';
   });
 
+  // Use passive listeners for drag — prevents scroll jank on Android
   window.addEventListener('dragenter', e => {
     e.preventDefault();
     dragCounter++;
@@ -138,6 +362,7 @@ function bindEvents() {
     if (e.dataTransfer.files.length) processFiles(e.dataTransfer.files);
   });
 
+  // Lightbox controls
   lightboxClose.addEventListener('click', closeLightbox);
   lightboxPrev.addEventListener('click', () => navigateLightbox(-1));
   lightboxNext.addEventListener('click', () => navigateLightbox(1));
@@ -148,6 +373,23 @@ function bindEvents() {
     if (e.key === 'Enter') { e.preventDefault(); lightboxCaption.blur(); }
   });
 
+  // Touch swipe in lightbox
+  let touchStartX = 0;
+  let touchStartY = 0;
+  lightbox.addEventListener('touchstart', e => {
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+  }, { passive: true });
+  lightbox.addEventListener('touchend', e => {
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    const dy = e.changedTouches[0].clientY - touchStartY;
+    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) {
+      saveLightboxCaption();
+      navigateLightbox(dx < 0 ? 1 : -1);
+    }
+  }, { passive: true });
+
+  // Keyboard shortcuts
   document.addEventListener('keydown', e => {
     if (lightbox.classList.contains('active')) {
       if (e.key === 'ArrowLeft')  navigateLightbox(-1);
@@ -157,6 +399,7 @@ function bindEvents() {
     if (e.key === 'Escape' && driveModal.classList.contains('active')) closeDriveModal();
   });
 
+  // Layout switcher
   document.querySelectorAll('.layout-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.layout-btn').forEach(b => b.classList.remove('active'));
@@ -164,6 +407,7 @@ function bindEvents() {
       currentLayout = btn.dataset.layout;
       updateLayoutLabel();
       renderUI();
+      saveSession();
       showToast(`Layout: ${btn.title}`);
     });
   });
@@ -176,11 +420,14 @@ function bindEvents() {
     showToast('🔀 Memories shuffled!');
   });
 
-  btnClearAll.addEventListener('click', () => {
+  btnClearAll.addEventListener('click', async () => {
     if (!photos.length) return;
     if (!confirm(`Remove all ${photos.length} memories? This cannot be undone.`)) return;
     photos = [];
-    saveToStorage();
+    if (idbDb) await idbClear();
+    localStorage.removeItem(LS_META_KEY);
+    localStorage.removeItem('memoire_photos');
+    sessionStorage.removeItem(LS_SESSION_KEY);
     renderUI();
     showToast('🗑 All memories cleared');
   });
@@ -210,6 +457,8 @@ function closeDriveModal() {
 
 // ─── Card Events ──────────────────────────────────────────────────────────────
 function bindCardEvents() {
+  // Re-attach via delegation once per render
+  collageGrid.removeEventListener('click', handleCardClick);
   collageGrid.addEventListener('click', handleCardClick);
 }
 
@@ -231,8 +480,13 @@ function deletePhoto(index) {
     card.style.transition = 'transform 0.3s ease, opacity 0.3s ease';
     card.style.transform  = 'scale(0.8)';
     card.style.opacity    = '0';
-    setTimeout(() => {
+    const photoId = photos[index].id;
+    setTimeout(async () => {
       photos.splice(index, 1);
+      // Remove from IDB too
+      if (idbDb) {
+        try { await idbDelete(photoId); } catch (e) { /* ignore */ }
+      }
       saveToStorage();
       renderUI();
       showToast('Memory removed');
@@ -305,14 +559,19 @@ function showToast(message, duration = 2800) {
 
 // ─── Ambient particles ────────────────────────────────────────────────────────
 function spawnAmbientParticles() {
+  // Fewer particles on mobile for performance
+  const isMobile = window.matchMedia('(max-width: 700px)').matches;
+  const count = isMobile ? 8 : 18;
+
   const bg = document.getElementById('ambientBg');
-  for (let i = 0; i < 18; i++) {
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < count; i++) {
     const dot = document.createElement('div');
-    const size = Math.random() * 4 + 1;
-    const x    = Math.random() * 100;
-    const y    = Math.random() * 100;
-    const dur  = Math.random() * 14 + 8;
-    const del  = Math.random() * -14;
+    const size    = Math.random() * 4 + 1;
+    const x       = Math.random() * 100;
+    const y       = Math.random() * 100;
+    const dur     = Math.random() * 14 + 8;
+    const del     = Math.random() * -14;
     const opacity = Math.random() * 0.3 + 0.05;
     dot.style.cssText = `
       position:absolute; width:${size}px; height:${size}px;
@@ -322,8 +581,10 @@ function spawnAmbientParticles() {
       animation:floatDot ${dur}s ${del}s ease-in-out infinite alternate;
       pointer-events:none;
     `;
-    bg.appendChild(dot);
+    frag.appendChild(dot);
   }
+  bg.appendChild(frag);
+
   if (!document.getElementById('ambientKF')) {
     const style = document.createElement('style');
     style.id = 'ambientKF';
@@ -342,23 +603,20 @@ function spawnAmbientParticles() {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function initDriveUI() {
-  // Load saved API key
-  const saved = localStorage.getItem('memoire_drive_api_key') || '';
+  const saved = localStorage.getItem(LS_API_KEY) || '';
   if (saved) {
     driveApiKeyInput.value = saved;
     updateApiKeyBadge(true);
   }
 
-  // Collapsible API key section
   driveApiKeyToggle.addEventListener('click', () => {
     driveApiKeySection.classList.toggle('open');
   });
 
-  // Save button
   driveApiKeySave.addEventListener('click', () => {
     const key = driveApiKeyInput.value.trim();
     if (!key) { showToast('⚠ Enter a valid API key first'); return; }
-    localStorage.setItem('memoire_drive_api_key', key);
+    localStorage.setItem(LS_API_KEY, key);
     updateApiKeyBadge(true);
     driveApiKeySection.classList.remove('open');
     showToast('🔑 API key saved!');
@@ -367,7 +625,6 @@ function initDriveUI() {
     if (e.key === 'Enter') driveApiKeySave.click();
   });
 
-  // Live detect bar — debounced as user types
   let detectTimer;
   driveUrlInput.addEventListener('input', () => {
     clearTimeout(detectTimer);
@@ -380,10 +637,10 @@ function updateApiKeyBadge(isSet) {
   apiKeyBadge.classList.toggle('set', isSet);
 }
 
-/** Render a chip per line showing detected link type */
 function updateDetectBar() {
   const lines = driveUrlInput.value.split('\n').map(l => l.trim()).filter(Boolean);
   driveDetectBar.innerHTML = '';
+  const frag = document.createDocumentFragment();
   lines.forEach(line => {
     const type  = detectLinkType(line);
     const label = type === 'folder' ? '📁 Folder' : type === 'file' ? '🖼 File' : '❓ Unknown';
@@ -391,17 +648,15 @@ function updateDetectBar() {
     chip.className = `detect-chip ${type}`;
     chip.title = line;
     chip.textContent = `${label}: ${truncate(line, 32)}`;
-    driveDetectBar.appendChild(chip);
+    frag.appendChild(chip);
   });
+  driveDetectBar.appendChild(frag);
 }
 
 function truncate(str, n) {
   return str.length > n ? str.slice(0, n) + '…' : str;
 }
 
-/**
- * Detect whether a Drive URL is a file, folder, or unknown.
- */
 function detectLinkType(url) {
   if (!url) return 'unknown';
   if (/drive\.google\.com\/(drive\/(u\/\d+\/)?)?folders\//i.test(url)) return 'folder';
@@ -413,7 +668,6 @@ function detectLinkType(url) {
   return 'unknown';
 }
 
-/** Extract folder ID from a Drive folder URL */
 function extractDriveFolderId(url) {
   url = url.trim();
   let m = url.match(/\/folders\/([a-zA-Z0-9_-]{20,})/);
@@ -425,7 +679,6 @@ function extractDriveFolderId(url) {
   return null;
 }
 
-/** Extract file ID from a Drive file URL */
 function extractDriveFileId(url) {
   url = url.trim();
   let m = url.match(/\/file\/d\/([a-zA-Z0-9_-]{20,})/);
@@ -436,7 +689,6 @@ function extractDriveFileId(url) {
   return null;
 }
 
-/** Build candidate image src URLs for a Drive file ID (tried in order) */
 function driveImageUrls(fileId) {
   return [
     `https://lh3.googleusercontent.com/d/${fileId}`,
@@ -445,9 +697,6 @@ function driveImageUrls(fileId) {
   ];
 }
 
-/**
- * Use Drive API v3 to list all image files in a folder (paginated).
- */
 async function listFolderImages(folderId, apiKey) {
   const MIME_TYPES = [
     'image/jpeg','image/png','image/gif',
@@ -476,10 +725,6 @@ async function listFolderImages(folderId, apiKey) {
   return allFiles;
 }
 
-/**
- * Try loading an image from a list of fallback URLs.
- * Resolves to { dataUrl, srcUrl }.
- */
 function tryLoadImageUrls(urlList) {
   return new Promise((resolve, reject) => {
     let i = 0;
@@ -490,13 +735,18 @@ function tryLoadImageUrls(urlList) {
       img.crossOrigin = 'anonymous';
       img.onload = () => {
         try {
+          // Compress Drive images the same way
+          let { naturalWidth: w, naturalHeight: h } = img;
+          if (w > MAX_DIMENSION || h > MAX_DIMENSION) {
+            if (w >= h) { h = Math.round(h * MAX_DIMENSION / w); w = MAX_DIMENSION; }
+            else        { w = Math.round(w * MAX_DIMENSION / h); h = MAX_DIMENSION; }
+          }
           const canvas  = document.createElement('canvas');
-          canvas.width  = img.naturalWidth;
-          canvas.height = img.naturalHeight;
-          canvas.getContext('2d').drawImage(img, 0, 0);
-          resolve({ dataUrl: canvas.toDataURL('image/jpeg', 0.88), srcUrl: url });
+          canvas.width  = w;
+          canvas.height = h;
+          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+          resolve({ dataUrl: canvas.toDataURL('image/jpeg', IMG_QUALITY), srcUrl: url });
         } catch(e) {
-          // CORS taint — keep the remote URL directly
           resolve({ dataUrl: url, srcUrl: url });
         }
       };
@@ -507,7 +757,6 @@ function tryLoadImageUrls(urlList) {
   });
 }
 
-/** Add or update a status row in the Drive modal */
 function setDriveStatusItem(id, state, text) {
   let item = driveStatus.querySelector(`[data-sid="${id}"]`);
   if (!item) {
@@ -524,22 +773,20 @@ function setDriveStatusItem(id, state, text) {
   item.querySelector('.drive-status-text').textContent = text;
 }
 
-/** Import one file by ID → push to photos[] */
 async function importSingleFile(fileId, sid, fileName) {
   const label = fileName || fileId.slice(0, 16);
   setDriveStatusItem(sid, 'loading', `Loading "${label}"…`);
   const { dataUrl } = await tryLoadImageUrls(driveImageUrls(fileId));
   photos.push({
-    id      : `drive_${fileId}_${Date.now()}`,
+    id     : `drive_${fileId}_${Date.now()}`,
     dataUrl,
-    caption : fileName ? fileName.replace(/\.[^.]+$/, '') : '',
-    addedAt : Date.now(),
-    source  : 'google_drive',
+    caption: fileName ? fileName.replace(/\.[^.]+$/, '') : '',
+    addedAt: Date.now(),
+    source : 'google_drive',
   });
   setDriveStatusItem(sid, 'success', `✓ "${label}" added`);
 }
 
-/** Main import handler — dispatches file vs folder paths per line */
 async function handleDriveImport() {
   const raw = driveUrlInput.value.trim();
   if (!raw) { showToast('⚠ Paste at least one Drive link first'); return; }
@@ -547,10 +794,10 @@ async function handleDriveImport() {
   const lines  = raw.split(/\n+/).map(l => l.trim()).filter(Boolean);
   if (!lines.length) return;
 
-  const apiKey = (localStorage.getItem('memoire_drive_api_key') || '').trim();
+  const apiKey = (localStorage.getItem(LS_API_KEY) || '').trim();
 
-  driveStatus.innerHTML   = '';
-  driveImportBtn.disabled = true;
+  driveStatus.innerHTML      = '';
+  driveImportBtn.disabled    = true;
   driveImportBtn.textContent = 'Importing…';
 
   let successCount = 0;
@@ -559,13 +806,11 @@ async function handleDriveImport() {
     const sid  = `ln_${idx}`;
     const type = detectLinkType(line);
 
-    // ── UNKNOWN ───────────────────────────────────────────────────
     if (type === 'unknown') {
       setDriveStatusItem(sid, 'error', `Not a recognised Drive link: ${truncate(line, 55)}`);
       return;
     }
 
-    // ── FOLDER ────────────────────────────────────────────────────
     if (type === 'folder') {
       const folderId = extractDriveFolderId(line);
       if (!folderId) {
@@ -611,7 +856,7 @@ async function handleDriveImport() {
       return;
     }
 
-    // ── FILE ──────────────────────────────────────────────────────
+    // FILE
     const fileId = extractDriveFileId(line);
     if (!fileId) {
       setDriveStatusItem(sid, 'error', `Cannot extract file ID from: ${truncate(line, 50)}`);

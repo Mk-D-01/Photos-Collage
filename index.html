@@ -2,9 +2,22 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Memoire — Your Memory Book</title>
   <meta name="description" content="A beautiful Pinterest-style photo collage that auto-arranges your memories like a memory book." />
+
+  <!-- PWA / Android -->
+  <meta name="theme-color" content="#0e0c15" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Mémoire" />
+  <link rel="manifest" href="manifest.json" />
+
+  <!-- Performance hints -->
+  <link rel="dns-prefetch" href="https://fonts.googleapis.com" />
+  <link rel="dns-prefetch" href="https://www.googleapis.com" />
+  <link rel="dns-prefetch" href="https://lh3.googleusercontent.com" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600&family=Dancing+Script:wght@600&display=swap" rel="stylesheet" />
@@ -70,7 +83,7 @@
   </section>
 
   <!-- Google Drive Import Modal -->
-  <div class="drive-modal" id="driveModal">
+  <div class="drive-modal" id="driveModal" role="dialog" aria-modal="true" aria-label="Import from Google Drive">
     <div class="drive-modal-box">
       <div class="drive-modal-header">
         <div class="drive-modal-title">
@@ -81,7 +94,7 @@
           </svg>
           Import from Google Drive
         </div>
-        <button class="drive-modal-close" id="driveModalClose">✕</button>
+        <button class="drive-modal-close" id="driveModalClose" aria-label="Close">✕</button>
       </div>
 
       <div class="drive-info-box">
@@ -151,10 +164,10 @@ https://drive.google.com/file/d/1ABC…/view      ← single file"
   </main>
 
   <!-- Lightbox -->
-  <div class="lightbox" id="lightbox">
-    <button class="lightbox-close" id="lightboxClose">✕</button>
-    <button class="lightbox-nav prev" id="lightboxPrev">‹</button>
-    <button class="lightbox-nav next" id="lightboxNext">›</button>
+  <div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Photo viewer">
+    <button class="lightbox-close" id="lightboxClose" aria-label="Close">✕</button>
+    <button class="lightbox-nav prev" id="lightboxPrev" aria-label="Previous photo">‹</button>
+    <button class="lightbox-nav next" id="lightboxNext" aria-label="Next photo">›</button>
     <div class="lightbox-content">
       <div class="lightbox-polaroid">
         <img class="lightbox-img" id="lightboxImg" src="" alt="" />
@@ -167,7 +180,7 @@ https://drive.google.com/file/d/1ABC…/view      ← single file"
   </div>
 
   <!-- Toast notifications -->
-  <div class="toast-container" id="toastContainer"></div>
+  <div class="toast-container" id="toastContainer" role="status" aria-live="polite"></div>
 
   <script src="collage.js"></script>
   <script src="app.js"></script>

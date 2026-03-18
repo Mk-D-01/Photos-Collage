@@ -1,15 +1,37 @@
 /**
- * collage.js — Layout Engine for Memory Book
+ * collage.js — Layout Engine for Memory Book (Optimised v2)
  * Handles masonry, grid, and scattered layouts.
- * Also manages the sticker and polaroid assignment logic.
+ * Uses IntersectionObserver for lazy image loading.
+ * Uses DocumentFragment for batch DOM insertion.
  */
 
 const STICKERS = ['🌸', '💫', '🌟', '❤️', '🎉', '🌈', '✨', '🦋', '🌙', '🎈', '🍀', '🌺'];
 const TILTS    = [-3, -2, -1.5, -1, 0, 1, 1.5, 2, 3]; // degrees for scattered mode
 
+// ─── Lazy Load Observer ───────────────────────────────────────────────────────
+let lazyObserver = null;
+
+function getLazyObserver() {
+  if (!lazyObserver) {
+    lazyObserver = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const img = entry.target;
+          if (img.dataset.src) {
+            img.src = img.dataset.src;
+            delete img.dataset.src;
+          }
+          lazyObserver.unobserve(img);
+        }
+      });
+    }, { rootMargin: '200px 0px' }); // start loading 200px before visible
+  }
+  return lazyObserver;
+}
+
 /**
- * Determine card style variant based on index
- * Every 7th card → polaroid, every 5th → sticker
+ * Determine card style variant based on index.
+ * Every 7th card → polaroid, every 5th → sticker.
  */
 function getCardVariant(index) {
   return {
@@ -17,40 +39,38 @@ function getCardVariant(index) {
     hasSticker : (index % 5 === 3),
     sticker    : STICKERS[index % STICKERS.length],
     tilt       : TILTS[index % TILTS.length],
-    animDelay  : `${Math.min(index * 0.05, 1.2)}s`,
+    animDelay  : `${Math.min(index * 0.04, 0.8)}s`, // capped lower for faster feel
   };
 }
 
 /**
- * Build a single photo card DOM element
+ * Build a single photo card DOM element.
  */
-function buildPhotoCard(photo, index, currentLayout) {
+function buildPhotoCard(photo, index) {
   const variant = getCardVariant(index);
   const card = document.createElement('div');
   card.className = 'photo-card';
   card.dataset.id = photo.id;
   card.style.animationDelay = variant.animDelay;
-
-  // Set CSS tilt variable
   card.style.setProperty('--tilt', `${variant.tilt}deg`);
 
-  // Polaroid styling
-  if (variant.isPolaroid) {
-    card.classList.add('polaroid-style');
-  }
-
-  // Sticker
+  if (variant.isPolaroid) card.classList.add('polaroid-style');
   if (variant.hasSticker) {
     card.classList.add('has-sticker');
     card.dataset.sticker = variant.sticker;
   }
 
   const img = document.createElement('img');
-  img.src = photo.dataUrl;
   img.alt = photo.caption || `Memory ${index + 1}`;
-  img.loading = 'lazy';
-  // Let masonry breathe — don't force height
   img.style.maxHeight = getMaxHeight(index);
+  // Use IntersectionObserver lazy loading: first few cards load eagerly
+  if (index < 6) {
+    img.src = photo.dataUrl;
+  } else {
+    img.dataset.src = photo.dataUrl;
+    img.src = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw=='; // 1px placeholder
+    getLazyObserver().observe(img);
+  }
 
   const overlay = document.createElement('div');
   overlay.className = 'photo-card-overlay';
@@ -80,7 +100,6 @@ function buildPhotoCard(photo, index, currentLayout) {
   card.appendChild(img);
   card.appendChild(overlay);
 
-  // Polaroid label
   if (variant.isPolaroid) {
     const label = document.createElement('div');
     label.className = 'polaroid-label';
@@ -92,27 +111,32 @@ function buildPhotoCard(photo, index, currentLayout) {
 }
 
 /**
- * Vary image heights for a natural masonry feel
+ * Vary image heights for natural masonry feel.
  */
 function getMaxHeight(index) {
-  // Alternate between tall, medium, short for visual rhythm
   const heights = ['380px', '260px', '320px', '480px', '200px', '340px', '290px'];
   return heights[index % heights.length];
 }
 
 /**
- * Render the entire collage grid
+ * Render the entire collage grid.
+ * Uses DocumentFragment for a single DOM write.
  */
 function renderCollage(photos, container, layout = 'masonry') {
-  container.innerHTML = '';
+  // Disconnect previous observers before clearing
+  if (lazyObserver) {
+    lazyObserver.disconnect();
+    lazyObserver = null;
+  }
 
-  // Set layout class
+  container.innerHTML = '';
   container.className = `collage-grid ${layout}`;
 
+  const frag = document.createDocumentFragment();
   photos.forEach((photo, index) => {
-    const card = buildPhotoCard(photo, index, layout);
-    container.appendChild(card);
+    frag.appendChild(buildPhotoCard(photo, index));
   });
+  container.appendChild(frag); // single reflow
 }
 
 /**
@@ -122,13 +146,13 @@ function formatDate(ts) {
   if (!ts) return '';
   return new Date(ts).toLocaleDateString('en-US', {
     month: 'short',
-    day:   'numeric',
-    year:  'numeric',
+    day  : 'numeric',
+    year : 'numeric',
   });
 }
 
 /**
- * Shuffle array in-place (Fisher-Yates)
+ * Shuffle array in-place (Fisher-Yates).
  */
 function shuffleArray(arr) {
   for (let i = arr.length - 1; i > 0; i--) {
