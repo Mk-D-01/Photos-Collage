@@ -30,16 +30,31 @@ function getLazyObserver() {
 }
 
 /**
- * Determine card style variant based on index.
- * Every 7th card → polaroid, every 5th → sticker.
+ * Lightweight deterministic hash from a string (photo.id).
+ * Returns a float in [0, 1) that is stable for the same id.
  */
-function getCardVariant(index) {
+function seededRandom(str) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = (h * 16777619) >>> 0;
+  }
+  return (h >>> 0) / 4294967296;
+}
+
+/**
+ * Determine card style variant based on index + photo id.
+ * Polaroid: random ~20% of cards (stable per photo id).
+ * Sticker: every 5th card.
+ */
+function getCardVariant(index, photoId) {
+  const rng = seededRandom(photoId || String(index));
   return {
-    isPolaroid : (index % 7 === 0),
+    isPolaroid : rng < 0.20,           // ~1 in 5
     hasSticker : (index % 5 === 3),
     sticker    : STICKERS[index % STICKERS.length],
     tilt       : TILTS[index % TILTS.length],
-    animDelay  : `${Math.min(index * 0.04, 0.8)}s`, // capped lower for faster feel
+    animDelay  : `${Math.min(index * 0.04, 0.8)}s`,
   };
 }
 
@@ -47,7 +62,7 @@ function getCardVariant(index) {
  * Build a single photo card DOM element.
  */
 function buildPhotoCard(photo, index) {
-  const variant = getCardVariant(index);
+  const variant = getCardVariant(index, photo.id);
   const card = document.createElement('div');
   card.className = 'photo-card';
   card.dataset.id = photo.id;
@@ -72,12 +87,23 @@ function buildPhotoCard(photo, index) {
     getLazyObserver().observe(img);
   }
 
-  const overlay = document.createElement('div');
-  overlay.className = 'photo-card-overlay';
+  // ── Always-visible caption strip ──────────────────────────────────
+  const captionBar = document.createElement('div');
+  captionBar.className = 'photo-card-caption-bar';
+  if (!photo.caption) captionBar.dataset.empty = 'true';
 
   const captionEl = document.createElement('div');
   captionEl.className = 'card-caption';
   captionEl.textContent = photo.caption || '';
+  captionBar.appendChild(captionEl);
+
+  // ── Hover overlay with duplicated caption + actions ────────────────
+  const overlay = document.createElement('div');
+  overlay.className = 'photo-card-overlay';
+
+  const overlayCaption = document.createElement('div');
+  overlayCaption.className = 'overlay-caption';
+  overlayCaption.textContent = photo.caption || '';
 
   const actions = document.createElement('div');
   actions.className = 'card-actions';
@@ -94,10 +120,11 @@ function buildPhotoCard(photo, index) {
 
   actions.appendChild(editBtn);
   actions.appendChild(deleteBtn);
-  overlay.appendChild(captionEl);
+  overlay.appendChild(overlayCaption);
   overlay.appendChild(actions);
 
   card.appendChild(img);
+  card.appendChild(captionBar);
   card.appendChild(overlay);
 
   if (variant.isPolaroid) {

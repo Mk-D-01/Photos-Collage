@@ -156,12 +156,29 @@ https://drive.google.com/file/d/1ABC…/view      ← single file"
       <button class="layout-btn" data-layout="grid" title="Grid">⊞</button>
       <button class="layout-btn" data-layout="scattered" title="Scattered">❋</button>
     </div>
+    <div class="stat-divider"></div>
+    <button class="btn btn-captions" id="btnViewCaptions" title="View all captions">💬 Captions</button>
   </div>
 
   <!-- Collage Container -->
   <main class="collage-wrapper" id="collageWrapper">
     <div class="collage-grid masonry" id="collageGrid"></div>
   </main>
+
+  <!-- View All Captions Modal -->
+  <div class="captions-modal" id="captionsModal" role="dialog" aria-modal="true" aria-label="All Captions">
+    <div class="captions-modal-box">
+      <div class="captions-modal-header">
+        <div class="captions-modal-title"><span>💬</span> All Captions</div>
+        <button class="captions-modal-close" id="captionsModalClose" aria-label="Close">✕</button>
+      </div>
+      <div class="captions-search">
+        <input class="captions-search-input" id="captionsSearchInput" placeholder="Search captions…" type="search" />
+      </div>
+      <div class="captions-stats" id="captionsStats"></div>
+      <div class="captions-list" id="captionsList"></div>
+    </div>
+  </div>
 
   <!-- Lightbox -->
   <div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Photo viewer">

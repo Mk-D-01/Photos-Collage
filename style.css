@@ -517,30 +517,66 @@ body {
   50% { transform: rotate(5deg) scale(1.1); }
 }
 
-/* Card overlay on hover */
+/* ── Persistent caption strip (always visible) ── */
+.photo-card-caption-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(to top, rgba(10,8,20,0.82) 0%, transparent 100%);
+  padding: 22px 12px 9px;
+  pointer-events: none;
+  z-index: 3;
+  transition: opacity 0.3s ease;
+}
+
+.card-caption {
+  font-size: 0.78rem;
+  color: rgba(255,255,255,0.92);
+  font-style: italic;
+  font-family: var(--font-display);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.7);
+  line-height: 1.3;
+}
+
+/* Caption bar is hidden when caption is empty */
+.photo-card-caption-bar:empty,
+.photo-card-caption-bar[data-empty="true"] {
+  display: none;
+}
+
+/* ── Hover action overlay ── */
 .photo-card-overlay {
   position: absolute;
   inset: 0;
-  background: linear-gradient(to top, rgba(14,12,21,0.85) 0%, transparent 50%);
+  background: linear-gradient(to top, rgba(14,12,21,0.9) 0%, rgba(14,12,21,0.15) 55%, transparent 100%);
   opacity: 0;
   transition: opacity 0.3s ease;
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  padding: 14px;
+  padding: 12px;
+  z-index: 4;
 }
 
 .photo-card:hover .photo-card-overlay { opacity: 1; }
+/* Hide the persistent bar when overlay is active so captions don't stack */
+.photo-card:hover .photo-card-caption-bar { opacity: 0; }
 
-.card-caption {
+/* Caption row inside hover overlay (mirrors card-caption but inside overlay) */
+.overlay-caption {
   font-size: 0.78rem;
-  color: rgba(255,255,255,0.9);
+  color: rgba(255,255,255,0.95);
   font-style: italic;
   font-family: var(--font-display);
   margin-bottom: 6px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.6);
 }
 
 .card-actions {
@@ -1143,7 +1179,216 @@ body {
 /* ============================
    DRIVE INPUT WRAPPER & DETECT BAR
    ============================ */
-.drive-input-wrap { position: relative; }
+.drive-input-wrap {
+  position: relative;
+}
+
+/* ============================
+   VIEW ALL CAPTIONS MODAL
+   ============================ */
+.captions-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: rgba(6, 5, 12, 0.92);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+.captions-modal.active {
+  opacity: 1;
+  pointer-events: all;
+}
+
+.captions-modal-box {
+  background: var(--bg-card);
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 600px;
+  max-height: 88dvh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-lg), var(--shadow-glow);
+  animation: modalIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  overflow: hidden;
+}
+
+.captions-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 22px 24px 18px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.captions-modal-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  color: var(--text-primary);
+}
+
+.captions-modal-title span { font-size: 1.3rem; }
+
+.captions-modal-close {
+  background: rgba(255,255,255,0.07);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: var(--transition);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  touch-action: manipulation;
+}
+.captions-modal-close:hover { background: rgba(251,113,133,0.2); color: var(--accent-rose); }
+
+.captions-search {
+  padding: 14px 24px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.captions-search-input {
+  width: 100%;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--border);
+  border-radius: 50px;
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  padding: 9px 18px;
+  outline: none;
+  transition: border-color 0.25s;
+}
+.captions-search-input:focus { border-color: var(--border-hover); }
+.captions-search-input::placeholder { color: var(--text-muted); }
+
+.captions-list {
+  overflow-y: auto;
+  flex: 1;
+  padding: 10px 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.captions-list::-webkit-scrollbar { width: 4px; }
+.captions-list::-webkit-scrollbar-thumb { background: var(--text-muted); border-radius: 2px; }
+
+.caption-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+  touch-action: manipulation;
+}
+.caption-row:hover {
+  background: rgba(192,132,252,0.08);
+  border-color: var(--border-hover);
+}
+
+.caption-row-thumb {
+  width: 52px;
+  height: 52px;
+  border-radius: 10px;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: var(--bg-secondary);
+}
+
+.caption-row-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.caption-row-num {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 3px;
+}
+
+.caption-row-text {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 0.88rem;
+  color: var(--accent-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.caption-row-text.empty {
+  color: var(--text-muted);
+  font-style: normal;
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+}
+
+.caption-row-open {
+  background: rgba(192,132,252,0.1);
+  border: 1px solid var(--border);
+  color: var(--accent-primary);
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  transition: var(--transition);
+}
+.caption-row-open:hover { background: rgba(192,132,252,0.25); }
+
+.captions-empty-msg {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  padding: 40px 20px;
+  line-height: 1.7;
+}
+
+.captions-stats {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  padding: 0 24px 14px;
+  flex-shrink: 0;
+}
+
+/* btn in stats bar */
+.btn-captions {
+  background: rgba(192,132,252,0.1);
+  border: 1px solid var(--border);
+  color: var(--accent-primary);
+  gap: 6px;
+}
+.btn-captions:hover {
+  background: rgba(192,132,252,0.2);
+  border-color: var(--border-hover);
+}
+
+@media (max-width: 600px) {
+  .captions-modal-box { border-radius: var(--radius-md); max-height: 95dvh; }
+  .captions-list { padding: 8px 8px 14px; }
+}
 
 .drive-detect-bar {
   display: flex;

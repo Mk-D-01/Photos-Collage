@@ -42,6 +42,7 @@ const lightboxPrev    = document.getElementById('lightboxPrev');
 const lightboxNext    = document.getElementById('lightboxNext');
 const btnClearAll     = document.getElementById('btnClearAll');
 const btnShuffle      = document.getElementById('btnShuffle');
+const btnViewCaptions = document.getElementById('btnViewCaptions');
 const toastContainer  = document.getElementById('toastContainer');
 // Drive
 const btnDriveImport     = document.getElementById('btnDriveImport');
@@ -58,6 +59,12 @@ const driveApiKeyInput   = document.getElementById('driveApiKeyInput');
 const driveApiKeySave    = document.getElementById('driveApiKeySave');
 const apiKeyBadge        = document.getElementById('apiKeyBadge');
 const driveDetectBar     = document.getElementById('driveDetectBar');
+// Captions modal
+const captionsModal      = document.getElementById('captionsModal');
+const captionsModalClose = document.getElementById('captionsModalClose');
+const captionsList       = document.getElementById('captionsList');
+const captionsSearchInput= document.getElementById('captionsSearchInput');
+const captionsStats      = document.getElementById('captionsStats');
 
 // ─── Bootstrap ────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', async () => {
@@ -397,6 +404,7 @@ function bindEvents() {
       if (e.key === 'Escape')     closeLightbox();
     }
     if (e.key === 'Escape' && driveModal.classList.contains('active')) closeDriveModal();
+    if (e.key === 'Escape' && captionsModal.classList.contains('active')) closeCaptionsModal();
   });
 
   // Layout switcher
@@ -419,6 +427,11 @@ function bindEvents() {
     renderUI();
     showToast('🔀 Memories shuffled!');
   });
+
+  btnViewCaptions.addEventListener('click', openCaptionsModal);
+  captionsModalClose.addEventListener('click', closeCaptionsModal);
+  captionsModal.addEventListener('click', e => { if (e.target === captionsModal) closeCaptionsModal(); });
+  captionsSearchInput.addEventListener('input', () => renderCaptionsList(captionsSearchInput.value));
 
   btnClearAll.addEventListener('click', async () => {
     if (!photos.length) return;
@@ -537,12 +550,100 @@ function saveLightboxCaption() {
     saveToStorage();
     const card = collageGrid.querySelector(`[data-id="${photos[currentIndex].id}"]`);
     if (card) {
-      const captionEl = card.querySelector('.card-caption');
-      if (captionEl) captionEl.textContent = newCaption;
+      // Sync persist caption bar
+      const bar = card.querySelector('.photo-card-caption-bar');
+      if (bar) {
+        const captionEl = bar.querySelector('.card-caption');
+        if (captionEl) captionEl.textContent = newCaption;
+        bar.dataset.empty = newCaption ? 'false' : 'true';
+        if (!newCaption) bar.dataset.empty = 'true';
+        else delete bar.dataset.empty;
+      }
+      // Sync hover overlay caption
+      const overlayCaption = card.querySelector('.overlay-caption');
+      if (overlayCaption) overlayCaption.textContent = newCaption;
+      // Sync polaroid label
       const labelEl = card.querySelector('.polaroid-label');
       if (labelEl && newCaption) labelEl.textContent = newCaption;
     }
   }
+}
+
+// ─── View All Captions Modal ──────────────────────────────────────────────────
+function openCaptionsModal() {
+  renderCaptionsList('');
+  captionsSearchInput.value = '';
+  captionsModal.classList.add('active');
+  document.body.style.overflow = 'hidden';
+  setTimeout(() => captionsSearchInput.focus(), 120);
+}
+
+function closeCaptionsModal() {
+  captionsModal.classList.remove('active');
+  document.body.style.overflow = '';
+}
+
+function renderCaptionsList(query) {
+  const q = (query || '').toLowerCase();
+  const filtered = photos
+    .map((p, i) => ({ photo: p, origIndex: i }))
+    .filter(({ photo }) => !q || (photo.caption || '').toLowerCase().includes(q));
+
+  const withCaption = filtered.filter(x => x.photo.caption).length;
+  captionsStats.textContent =
+    `${withCaption} of ${photos.length} ${photos.length === 1 ? 'memory' : 'memories'} have captions`
+    + (q ? ` · ${filtered.length} matching` : '');
+
+  captionsList.innerHTML = '';
+  if (!filtered.length) {
+    captionsList.innerHTML = `<div class="captions-empty-msg">No captions match your search.<br>Click a photo to open it and add a caption.</div>`;
+    return;
+  }
+
+  const frag = document.createDocumentFragment();
+  filtered.forEach(({ photo, origIndex }) => {
+    const row = document.createElement('div');
+    row.className = 'caption-row';
+
+    const thumb = document.createElement('img');
+    thumb.className = 'caption-row-thumb';
+    thumb.src = photo.dataUrl;
+    thumb.alt = photo.caption || `Memory ${origIndex + 1}`;
+    thumb.loading = 'lazy';
+
+    const info = document.createElement('div');
+    info.className = 'caption-row-info';
+
+    const num = document.createElement('div');
+    num.className = 'caption-row-num';
+    num.textContent = `Memory ${origIndex + 1}` + (photo.addedAt ? ` · ${formatDate(photo.addedAt)}` : '');
+
+    const text = document.createElement('div');
+    text.className = 'caption-row-text' + (photo.caption ? '' : ' empty');
+    text.textContent = photo.caption || 'No caption yet — click to add one';
+
+    info.appendChild(num);
+    info.appendChild(text);
+
+    const openBtn = document.createElement('button');
+    openBtn.className = 'caption-row-open';
+    openBtn.title = 'Open in viewer';
+    openBtn.textContent = '↗';
+
+    row.appendChild(thumb);
+    row.appendChild(info);
+    row.appendChild(openBtn);
+
+    const clickHandler = () => {
+      closeCaptionsModal();
+      openLightbox(origIndex);
+    };
+    row.addEventListener('click', clickHandler);
+    openBtn.addEventListener('click', e => { e.stopPropagation(); clickHandler(); });
+
+    frag.appendChild(row);
+  });
+  captionsList.appendChild(frag);
 }
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
