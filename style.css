@@ -602,7 +602,7 @@ body {
 .card-btn.delete:hover { background: rgba(251,113,133,0.5); border-color: var(--accent-rose); }
 
 /* ============================
-   POLAROID VARIANT (every 7th)
+   POLAROID VARIANT (random ~20%)
    ============================ */
 .photo-card.polaroid-style {
   background: #fffdf7;
@@ -619,6 +619,12 @@ body {
 .photo-card.polaroid-style .photo-card-overlay {
   border-radius: 2px;
   bottom: 36px;
+}
+
+/* Hide the always-visible caption strip on polaroids —
+   the script-font polaroid-label below serves the same purpose */
+.photo-card.polaroid-style .photo-card-caption-bar {
+  display: none !important;
 }
 
 .photo-card.polaroid-style .polaroid-label {
